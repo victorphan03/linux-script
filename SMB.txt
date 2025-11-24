@@ -1,0 +1,22 @@
+Cách 3: Map Network Drive với tài khoản cụ thể (Cách chuẩn nhất)
+Thay vì để Windows tự đoán cách đăng nhập (dẫn đến việc nó thử Guest và bị chặn), hãy ép nó dùng tài khoản x79 ngay từ đầu.
+
+Chuột phải vào This PC (hoặc My Computer) -> Chọn Map network drive...
+
+Folder: Gõ \\192.168.1.7\Data
+
+👉 QUAN TRỌNG: Tích vào ô "Connect using different credentials" (Kết nối bằng thông tin đăng nhập khác).
+
+Nhấn Finish.
+
+Một bảng đăng nhập hiện ra:
+
+User: x79
+
+Pass: 1990
+
+Tích vào "Remember my credentials".
+
+Nhấn OK.
+
+Cách số 3 thường giải quyết triệt để vấn đề xác thực này.

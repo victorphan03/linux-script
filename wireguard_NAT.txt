@@ -1,0 +1,97 @@
+# Hướng dẫn Cấu hình WireGuard VPN Toàn diện (NAT & Split Tunneling)
+
+Tài liệu này hướng dẫn chi tiết cách thiết lập WireGuard để truy cập các thiết bị trong mạng nội bộ (LAN) như NAS, Server, Camera từ xa, đồng thời vẫn giữ tốc độ Internet bình thường cho các tác vụ khác (Youtube, Web...).
+
+---
+
+## 🎯 Mô hình & Mục tiêu
+
+* **Server (Armbian):** IP LAN `192.168.1.6`. Đóng vai trò Gateway, sử dụng NAT để chuyển tiếp gói tin từ VPN vào mạng LAN.
+* **Client (Laptop/Điện thoại):** Kết nối từ xa (qua 4G hoặc Wifi Cafe).
+* **Mục tiêu (Split Tunneling - Chia luồng):**
+    * Truy cập được tài nguyên nội bộ (dải `192.168.1.x`).
+    * Truy cập Internet (Youtube, Facebook...) đi trực tiếp qua mạng hiện tại để đạt tốc độ cao nhất, không đi vòng qua VPN.
+
+---
+
+## PHẦN 1: Cấu hình trên Server (Armbian)
+
+Để Server có thể chuyển tiếp dữ liệu từ VPN sang mạng LAN, chúng ta cần bật **IP Forwarding** và cấu hình **NAT (Masquerade)**.
+
+### Bước 1: Bật chuyển tiếp IP (IP Forwarding)
+
+1.  Mở file cấu hình hệ thống:
+    ```bash
+    sudo nano /etc/sysctl.conf
+    ```
+2.  Tìm dòng `net.ipv4.ip_forward=1`.
+    * Nếu có dấu `#` ở đầu, hãy xóa dấu `#` đi.
+    * Nếu chưa có, hãy thêm dòng này vào cuối file:
+    ```ini
+    net.ipv4.ip_forward=1
+    ```
+3.  Lưu file (`Ctrl+O` -> `Enter` -> `Ctrl+X`).
+4.  Áp dụng cấu hình ngay lập tức:
+    ```bash
+    sudo sysctl -p
+    ```
+
+### Bước 2: Cấu hình NAT trong WireGuard Server
+
+Thêm quy tắc tường lửa (iptables) vào file cấu hình để Server biết cách xử lý gói tin đi ra card mạng vật lý (`eth0`).
+
+1.  Mở file cấu hình WireGuard:
+    ```bash
+    sudo nano /etc/wireguard/wg0.conf
+    ```
+2.  Trong phần **`[Interface]`**, thêm 2 dòng `PostUp` và `PostDown` vào bên dưới các dòng có sẵn.
+
+    *Nội dung file mẫu:*
+    ```ini
+    [Interface]
+    Address = 10.66.66.1/24
+    ListenPort = 51820
+    PrivateKey = <Khóa bí mật của Server - Giữ nguyên>
+
+    # --- THÊM ĐOẠN NÀY (NAT ra card mạng eth0) ---
+    # Lưu ý: Đảm bảo tên card mạng là 'eth0' bằng lệnh 'ip a'. Nếu khác, hãy sửa lại.
+    PostUp = iptables -A FORWARD -i %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+    PostDown = iptables -D FORWARD -i %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+    # ---------------------------------------------
+    ```
+
+3.  Lưu file và thoát.
+
+### Bước 3: Khởi động lại dịch vụ
+```bash
+sudo systemctl restart wg-quick@wg0
+
+
+
+
+
+
+## PHẦN 2: Cấu hình trên Client (Windows/Mobile)
+
+Đây là bước quyết định để máy tính "biết đường" đi vào mạng LAN nhà bạn mà không làm chậm Internet.
+
+### Bước 1: Thêm Tunnel và Chỉnh sửa
+1.  Mở ứng dụng **WireGuard** trên máy khách.
+2.  Thêm tunnel (Import file cấu hình `.conf` hoặc dán nội dung cấu hình client mới tạo).
+3.  Chọn tunnel vừa thêm và nhấn nút **Edit** (Chỉnh sửa).
+
+### Bước 2: Tắt chặn traffic (Bắt buộc với Windows)
+Tìm ô checkbox có tên:
+* ⬜ **Block untunneled traffic (kill-switch)**
+
+
+
+👉 **BẮT BUỘC BỎ TÍCH (Uncheck)** ô này.
+
+> **Lý do:** Nếu tích vào đây, Windows sẽ chặn mọi kết nối không đi qua VPN (bao gồm Internet thường), gây xung đột với cấu hình chia luồng (Split Tunneling).
+
+### Bước 3: Cấu hình Split Tunneling (Sửa AllowedIPs)
+Trong phần nội dung cấu hình **`[Peer]`**, sửa dòng `AllowedIPs` thành:
+
+```ini
+AllowedIPs = 10.66.66.0/24, 192.168.1.0/24
