@@ -1,0 +1,86 @@
+# DỰ ÁN: TỰ ĐỘNG KÍCH NGUỒN LAPTOP DÙNG RP2040 (CÁCH LY QUANG)
+---
+**Mô tả:** Hệ thống sử dụng RP2040 để tự động nhấn nút nguồn Laptop khi có điện. Sử dụng 2 Opto để cách ly hoàn toàn điện áp giữa Vi điều khiển và Laptop, đảm bảo an toàn tuyệt đối.
+
+## 1. DANH SÁCH LINH KIỆN
+1. **RP2040 (Raspberry Pi Pico):** 1 cái.
+2. **Optocoupler PC817:** 2 cái (Gọi là Opto 1 và Opto 2).
+3. **Điện trở (220Ω - 470Ω):** 2 cái.
+4. **Dây điện nối mạch.**
+
+## 2. SƠ ĐỒ ĐẤU NỐI (WIRING DIAGRAM)
+
+### A. Mạch Cảm biến trạng thái (OPTO 1 - INPUT)
+*Nhiệm vụ: Báo cho RP2040 biết Laptop đang Tắt hay Mở.*
+*Lấy tín hiệu từ cổng USB 5V của Laptop.*
+
+| Chân Opto PC817 | Kết nối tới | Ghi chú |
+| :--- | :--- | :--- |
+| **Chân 1 (Anode)** | **Laptop USB 5V (+)** | Nối tiếp qua điện trở 220Ω |
+| **Chân 2 (Cathode)** | **Laptop USB GND (-)** | Mass của cổng USB |
+| **Chân 4 (Collector)**| **RP2040 GPIO 14** | Chân đọc tín hiệu |
+| **Chân 3 (Emitter)** | **RP2040 GND** | Mass của RP2040 |
+
+> **Nguyên lý:** > - Laptop MỞ -> USB có điện -> Opto dẫn -> GPIO 14 nối xuống Mass (Mức 0).
+> - Laptop TẮT -> USB mất điện -> Opto ngắt -> GPIO 14 treo áp cao (Mức 1).
+
+---
+
+### B. Mạch Kích nguồn (OPTO 2 - OUTPUT)
+*Nhiệm vụ: RP2040 "nhấn" nút nguồn Laptop.*
+
+| Chân Opto PC817 | Kết nối tới | Ghi chú |
+| :--- | :--- | :--- |
+| **Chân 1 (Anode)** | **RP2040 GPIO 15** | Nối tiếp qua điện trở 220Ω |
+| **Chân 2 (Cathode)** | **RP2040 GND** | Mass của RP2040 |
+| **Chân 4 (Collector)**| **Laptop Power Button (+)** | Chân dương nút nguồn |
+| **Chân 3 (Emitter)** | **Laptop Power Button (-)** | Chân âm nút nguồn |
+
+---
+
+## 3. MÃ NGUỒN (MICROPYTHON)
+Lưu nội dung bên dưới vào file `main.py` trên RP2040.
+
+```python
+import machine
+import time
+
+# --- CẤU HÌNH ---
+# Chân Input: Đọc trạng thái USB (Dùng PULL_UP)
+# Logic: 0 = Máy Mở (Opto dẫn), 1 = Máy Tắt (Opto ngắt)
+pin_status = machine.Pin(14, machine.Pin.IN, machine.Pin.PULL_UP)
+
+# Chân Output: Kích Opto nối vào nút nguồn
+pin_trigger = machine.Pin(15, machine.Pin.OUT, value=0)
+
+def main():
+    print("--- POWER CONTROL SYSTEM STARTED ---")
+    
+    # 1. Thời gian chờ ổn định dòng điện (Safety Delay)
+    # Chờ 3 giây để điện áp Adapter/PSU ổn định hoàn toàn sau khi có điện
+    time.sleep(3) 
+    
+    # 2. Đọc trạng thái hiện tại
+    status_val = pin_status.value()
+    
+    # 3. Xử lý logic
+    if status_val == 0:
+        # GPIO nối đất -> Opto Input đang dẫn -> USB có điện
+        print(f"[TRẠNG THÁI: 0] Laptop đang MỞ.")
+        print(">> HÀNH ĐỘNG: Hệ thống ngủ, không làm gì cả.")
+        
+    else:
+        # GPIO treo cao -> Opto Input ngắt -> USB mất điện
+        print(f"[TRẠNG THÁI: 1] Laptop đang TẮT.")
+        print(">> HÀNH ĐỘNG: Tiến hành kích nguồn...")
+        
+        # Thực hiện nhấn nút
+        pin_trigger.value(1)  # Đóng mạch (Nhấn)
+        time.sleep(0.5)       # Giữ trong 0.5 giây
+        pin_trigger.value(0)  # Ngắt mạch (Nhả)
+        
+        print(">> Đã kích xong. Hệ thống ngủ.")
+
+# Chạy chương trình
+if __name__ == "__main__":
+    main()

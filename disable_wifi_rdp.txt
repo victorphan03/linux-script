@@ -1,0 +1,5 @@
+chay powershell admin lenh nay
+New-NetFirewallRule -DisplayName "Block RDP on WiFi" -Direction Inbound -LocalPort 3389 -Protocol TCP -InterfaceType Wireless -Action Block
+
+Go bo :
+Remove-NetFirewallRule -DisplayName "Block RDP on WiFi"
