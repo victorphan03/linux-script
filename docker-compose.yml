@@ -1,0 +1,17 @@
+services:
+  webdav:
+    image: bytemark/webdav
+    container_name: apache_webdav
+    restart: unless-stopped
+    ports:
+      - "8083:80"
+    environment:
+      # Cấu hình cực kỳ tường minh, không sợ lỗi cú pháp
+      - AUTH_TYPE=Basic
+      - USERNAME=victor
+      - PASSWORD=mat_khau_cua_ban
+    volumes:
+      - /mnt/volume_sgp1_01/webdav/data:/var/lib/dav
+      
+# chmod -R 777 /mnt/volume_sgp1_01/webdav/data
+# docker compose up -d
