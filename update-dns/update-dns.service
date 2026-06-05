@@ -1,0 +1,23 @@
+[Unit]
+Description=Tu dong chay script Update DNS moi 30s
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/
+
+# Cau hinh chay script va ghi log:
+# -c: Chay cau lenh trong ngoac don
+# >>: Ghi noi tiep (append) vao file log (khong xoa log cu)
+# 2>&1: Ghi ca loi (stderr) vao cung file log
+ExecStart=/bin/bash -c '/root/update_dns/master_update.sh >> /var/log/update-dns.log 2>&1'
+
+# Tu dong chay lai sau khi script ket thuc
+Restart=always
+
+# Thoi gian nghi giua cac lan chay (30 giay)
+RestartSec=30
+
+[Install]
+WantedBy=multi-user.target
