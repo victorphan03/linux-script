@@ -41,11 +41,19 @@ class cf_dns_main:
 
         configs = self.get_configs(None)
         domain = new_conf.get('RECORD_NAME')
+        old_domain = new_conf.get('OLD_RECORD_NAME')
+        
+        if 'OLD_RECORD_NAME' in new_conf:
+            del new_conf['OLD_RECORD_NAME']
         
         # Check ton tai
         found = False
         for i, conf in enumerate(configs):
-            if conf.get('RECORD_NAME') == domain:
+            if old_domain and conf.get('RECORD_NAME') == old_domain:
+                configs[i] = new_conf
+                found = True
+                break
+            elif not old_domain and conf.get('RECORD_NAME') == domain:
                 configs[i] = new_conf
                 found = True
                 break

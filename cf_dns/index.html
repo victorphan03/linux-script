@@ -94,6 +94,7 @@ var cf_dns = {
                     '<td>' + res[i].ZONE_ID + '</td>' +
                     '<td>' + (res[i].PROXIED === 'true' ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>') + '</td>' +
                     '<td style="text-align: right;">' +
+                        '<a href="javascript:;" class="btlink" onclick="cf_dns.duplicate_config('+i+')">Nhân bản</a> | ' +
                         '<a href="javascript:;" class="btlink" onclick="cf_dns.edit_config_view('+i+')">Sửa</a> | ' +
                         '<a href="javascript:;" class="btlink" onclick="cf_dns.delete_config(\''+res[i].RECORD_NAME+'\')">Xóa</a>' +
                     '</td>' +
@@ -112,19 +113,24 @@ var cf_dns = {
         });
     },
     
-    add_config_view: function(is_edit, index) {
+    add_config_view: function(is_edit, index, duplicate_data) {
         var conf = {AUTH_EMAIL: '', AUTH_KEY: '', ZONE_ID: '', RECORD_NAME: '', PROXIED: 'false'};
         var title = 'Thêm Cấu Hình Mới';
         if(is_edit) {
             conf = Object.assign({}, this.configs[index]);
             title = 'Sửa Cấu Hình';
+        } else if (duplicate_data) {
+            conf = Object.assign({}, duplicate_data);
+            conf.RECORD_NAME = conf.RECORD_NAME + '-copy';
+            title = 'Nhân bản Cấu Hình';
         }
         
         var html = '<div class="bt-form pd20 pb70">' +
+            '<input type="hidden" name="OLD_RECORD_NAME" value="'+(is_edit ? conf.RECORD_NAME : '')+'">' +
             '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="AUTH_EMAIL" value="'+conf.AUTH_EMAIL+'" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
             '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="AUTH_KEY" value="'+conf.AUTH_KEY+'" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
             '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="ZONE_ID" value="'+conf.ZONE_ID+'" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
-            '<div class="line"><span class="tname">Tên miền</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="RECORD_NAME" value="'+conf.RECORD_NAME+'" style="width:300px" placeholder="Ví dụ: home.domain.com" '+(is_edit?'readonly':'')+'></div></div>' +
+            '<div class="line"><span class="tname">Tên miền</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="RECORD_NAME" value="'+conf.RECORD_NAME+'" style="width:300px" placeholder="Ví dụ: home.domain.com"></div></div>' +
             '<div class="line"><span class="tname">Bật Proxy</span><div class="info-r"><select class="bt-input-text mr5" name="PROXIED" style="width:300px"><option value="true" '+(conf.PROXIED==='true'?'selected':'')+'>Bật (Đám mây cam)</option><option value="false" '+(conf.PROXIED==='false'?'selected':'')+'>Tắt (Đám mây xám)</option></select></div></div>' +
             '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_config()">Lưu lại</button></div>' +
         '</div>';
@@ -143,8 +149,13 @@ var cf_dns = {
         this.add_config_view(true, index);
     },
     
+    duplicate_config: function(index) {
+        this.add_config_view(false, null, this.configs[index]);
+    },
+    
     save_config: function() {
         var data = {
+            OLD_RECORD_NAME: $('input[name="OLD_RECORD_NAME"]').val(),
             AUTH_EMAIL: $('input[name="AUTH_EMAIL"]').val(),
             AUTH_KEY: $('input[name="AUTH_KEY"]').val(),
             ZONE_ID: $('input[name="ZONE_ID"]').val(),
