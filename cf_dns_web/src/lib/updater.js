@@ -157,10 +157,29 @@ function saveSettings(data) {
   fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
 }
 
+async function fetchRecords(email, key, zoneId) {
+  if (!email || !key || !zoneId) throw new Error("Missing credentials");
+  
+  const getOptions = {
+    method: 'GET',
+    headers: {
+      'X-Auth-Email': email,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  const resData = await fetchCloudflare(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records?type=A`, getOptions);
+  if (!resData.success) {
+    throw new Error(resData.errors?.[0]?.message || 'Unknown API Error');
+  }
+  return resData.result;
+}
+
 module.exports = {
   checkAndUpdateDns,
   getSettings,
   saveSettings,
   getConfigs,
-  saveConfigs
+  saveConfigs,
+  fetchRecords
 };

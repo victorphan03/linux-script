@@ -64,6 +64,42 @@ class cf_dns_main:
         public.WriteFile(self.__config_file, json.dumps(configs))
         return public.returnMsg(True, 'Cập nhật cấu hình thành công')
 
+    # Lay danh sach Record tu Cloudflare
+    def fetch_records(self, args):
+        auth_email = getattr(args, 'AUTH_EMAIL', '')
+        auth_key = getattr(args, 'AUTH_KEY', '')
+        zone_id = getattr(args, 'ZONE_ID', '')
+        
+        if not auth_email or not auth_key or not zone_id:
+            if hasattr(args, 'get'):
+                auth_email = args.get('AUTH_EMAIL', '')
+                auth_key = args.get('AUTH_KEY', '')
+                zone_id = args.get('ZONE_ID', '')
+
+        if not auth_email or not auth_key or not zone_id:
+            return public.returnMsg(False, 'Vui lòng nhập đầy đủ Email, API Key và Zone ID')
+            
+        try:
+            import urllib.request
+            url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A"
+            req = urllib.request.Request(url, headers={
+                'X-Auth-Email': auth_email,
+                'Authorization': f'Bearer {auth_key}',
+                'Content-Type': 'application/json'
+            })
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                
+            if not res_data.get('success'):
+                err_msg = res_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+                return public.returnMsg(False, f'Lỗi API: {err_msg}')
+                
+            records = res_data.get('result', [])
+            return {'status': True, 'data': records}
+        except Exception as e:
+            return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
+
     # Xoa config
     def delete_config(self, args):
         domain = getattr(args, 'domain', '')
@@ -142,21 +178,45 @@ class cf_dns_main:
             return {"interval": 30}
 
     def save_settings(self, args):
+        settings = self.get_settings(None)
+
+        # Cập nhật interval nếu có
         interval = getattr(args, 'interval', '')
-        if not interval:
-            if hasattr(args, 'get'):
-                interval = args.get('interval', '')
-            elif type(args) is dict and 'interval' in args:
-                interval = args['interval']
+        if not interval and hasattr(args, 'get'):
+            interval = args.get('interval', '')
+            
+        if interval:
+            try:
+                val = int(interval)
+                if val >= 10:
+                    settings['interval'] = val
+            except:
+                pass
+
+        # Cập nhật credentials nếu có
+        cf_email = getattr(args, 'cf_email', '')
+        if not cf_email and hasattr(args, 'get'):
+            cf_email = args.get('cf_email', '')
+        if cf_email:
+            settings['cf_email'] = cf_email
+
+        cf_key = getattr(args, 'cf_key', '')
+        if not cf_key and hasattr(args, 'get'):
+            cf_key = args.get('cf_key', '')
+        if cf_key:
+            settings['cf_key'] = cf_key
+
+        cf_zone = getattr(args, 'cf_zone', '')
+        if not cf_zone and hasattr(args, 'get'):
+            cf_zone = args.get('cf_zone', '')
+        if cf_zone:
+            settings['cf_zone'] = cf_zone
 
         try:
-            val = int(interval)
-            if val < 10:
-                return public.returnMsg(False, 'Thời gian quét phải >= 10 giây')
-            public.WriteFile(self.__settings_file, json.dumps({"interval": val}))
+            public.WriteFile(self.__settings_file, json.dumps(settings))
             
             # Restart service
             os.system('systemctl restart cf_dns')
-            return public.returnMsg(True, 'Đã lưu cài đặt và khởi động lại dịch vụ')
+            return public.returnMsg(True, 'Đã lưu cài đặt')
         except:
-            return public.returnMsg(False, 'Tham số không hợp lệ')
+            return public.returnMsg(False, 'Lỗi khi lưu cài đặt')

@@ -26,7 +26,7 @@
     </div>
     
     <div class="mt15">
-        <button class="btn btn-success btn-sm mb15" onclick="cf_dns.add_config_view()">Thêm Cấu Hình</button>
+        <button class="btn btn-success btn-sm mb15" onclick="cf_dns.manage_zone_view()">Quản lý Zone (Lấy Danh Sách)</button>
         <button class="btn btn-warning btn-sm mb15 ml10" onclick="cf_dns.force_update()">Force Update (Test)</button>
         <div id="cf_dns_table"></div>
     </div>
@@ -113,67 +113,134 @@ var cf_dns = {
         });
     },
     
-    add_config_view: function(is_edit, index, duplicate_data) {
-        var conf = {AUTH_EMAIL: '', AUTH_KEY: '', ZONE_ID: '', RECORD_NAME: '', PROXIED: 'false'};
-        var title = 'Thêm Cấu Hình Mới';
-        if(is_edit) {
-            conf = Object.assign({}, this.configs[index]);
-            title = 'Sửa Cấu Hình';
-        } else if (duplicate_data) {
-            conf = Object.assign({}, duplicate_data);
-            conf.RECORD_NAME = conf.RECORD_NAME + '-copy';
-            title = 'Nhân bản Cấu Hình';
-        }
-        
-        var html = '<div class="bt-form pd20 pb70">' +
-            '<input type="hidden" name="OLD_RECORD_NAME" value="'+(is_edit ? conf.RECORD_NAME : '')+'">' +
-            '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="AUTH_EMAIL" value="'+conf.AUTH_EMAIL+'" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
-            '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="AUTH_KEY" value="'+conf.AUTH_KEY+'" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
-            '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="ZONE_ID" value="'+conf.ZONE_ID+'" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
-            '<div class="line"><span class="tname">Tên miền</span><div class="info-r"><input class="bt-input-text mr5" type="text" name="RECORD_NAME" value="'+conf.RECORD_NAME+'" style="width:300px" placeholder="Ví dụ: home.domain.com"></div></div>' +
-            '<div class="line"><span class="tname">Bật Proxy</span><div class="info-r"><select class="bt-input-text mr5" name="PROXIED" style="width:300px"><option value="true" '+(conf.PROXIED==='true'?'selected':'')+'>Bật (Đám mây cam)</option><option value="false" '+(conf.PROXIED==='false'?'selected':'')+'>Tắt (Đám mây xám)</option></select></div></div>' +
-            '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_config()">Lưu lại</button></div>' +
+    manage_zone_view: function() {
+        var html = '<div class="bt-form pd20 pb70" style="padding-bottom: 70px;">' +
+            '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_email" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
+            '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_key" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
+            '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_zone" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
+            '<div class="line"><div class="info-r"><button class="btn btn-success btn-sm" onclick="cf_dns.fetch_records()">Tải Danh Sách A Record</button></div></div>' +
+            '<div id="fetch_results" style="margin-top: 15px;"></div>' +
+            '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_credentials()">Lưu Thông Tin</button></div>' +
         '</div>';
         
         layer.open({
             type: 1,
-            title: title,
-            area: '500px',
+            title: 'Quản lý Zone Cloudflare',
+            area: '600px',
             closeBtn: 1,
             shadeClose: false,
             content: html
         });
+        
+        this.request('get_settings', {}, function(res) {
+            if(res) {
+                if(res.cf_email) $('#cf_email').val(res.cf_email);
+                if(res.cf_key) $('#cf_key').val(res.cf_key);
+                if(res.cf_zone) $('#cf_zone').val(res.cf_zone);
+            }
+            if(!$('#cf_email').val() && cf_dns.configs.length > 0) {
+                $('#cf_email').val(cf_dns.configs[0].AUTH_EMAIL);
+                $('#cf_key').val(cf_dns.configs[0].AUTH_KEY);
+                $('#cf_zone').val(cf_dns.configs[0].ZONE_ID);
+            }
+        });
+    },
+    
+    save_credentials: function() {
+        var email = $('#cf_email').val();
+        var key = $('#cf_key').val();
+        var zone = $('#cf_zone').val();
+        
+        var loading = layer.msg('Đang lưu...', {icon: 16, time: 0});
+        this.request('save_settings', {cf_email: email, cf_key: key, cf_zone: zone}, function(res) {
+            layer.close(loading);
+            layer.msg(res.msg, {icon: res.status ? 1 : 2});
+            if(res.status) {
+                layer.closeAll();
+            }
+        });
+    },
+    
+    fetch_records: function() {
+        var email = $('#cf_email').val();
+        var key = $('#cf_key').val();
+        var zone = $('#cf_zone').val();
+        
+        if(!email || !key || !zone) {
+            layer.msg('Vui lòng nhập đầy đủ thông tin', {icon: 2});
+            return;
+        }
+        
+        var loading = layer.msg('Đang tải danh sách...', {icon: 16, time: 0});
+        this.request('fetch_records', {AUTH_EMAIL: email, AUTH_KEY: key, ZONE_ID: zone}, function(res) {
+            layer.close(loading);
+            if(!res.status) {
+                layer.msg(res.msg, {icon: 2});
+                return;
+            }
+            
+            var records = res.data;
+            var tbody = '';
+            
+            var activeDomains = cf_dns.configs.map(function(c) { return c.RECORD_NAME; });
+            
+            for(var i=0; i<records.length; i++) {
+                var r = records[i];
+                var isActive = activeDomains.indexOf(r.name) !== -1;
+                var proxied = r.proxied ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>';
+                
+                var switchHtml = '<div class="bt-status" style="margin-top:0px;">' +
+                    '<input class="btswitch btswitch-ios" id="ddns_'+i+'" type="checkbox" '+(isActive?'checked':'')+'>' +
+                    '<label class="btswitch-btn" for="ddns_'+i+'" onclick="cf_dns.toggle_ddns(\''+r.name+'\', '+r.proxied+', \''+email+'\', \''+key+'\', \''+zone+'\', this)"></label>' +
+                '</div>';
+                
+                tbody += '<tr>' +
+                    '<td>' + r.name + '</td>' +
+                    '<td>' + r.content + '</td>' +
+                    '<td>' + proxied + '</td>' +
+                    '<td>' + switchHtml + '</td>' +
+                '</tr>';
+            }
+            
+            if(records.length === 0) {
+                tbody = '<tr><td colspan="4" class="text-center">Không có A Record nào</td></tr>';
+            }
+            
+            var table = '<div class="divtable" style="max-height: 350px; overflow-y: auto;">' +
+                '<table class="table table-hover">' +
+                    '<thead><tr><th>Tên miền</th><th>IP Hiện tại</th><th>Proxy</th><th>DDNS (Bật/Tắt)</th></tr></thead>' +
+                    '<tbody>' + tbody + '</tbody>' +
+                '</table>' +
+            '</div>';
+            
+            $('#fetch_results').html(table);
+        });
+    },
+    
+    toggle_ddns: function(domain, proxied, email, key, zone, el) {
+        var isChecked = !$(el).prev('input').prop('checked');
+        if(isChecked) {
+            var data = {
+                AUTH_EMAIL: email,
+                AUTH_KEY: key,
+                ZONE_ID: zone,
+                RECORD_NAME: domain,
+                PROXIED: proxied ? 'true' : 'false'
+            };
+            this.request('save_config', {data: JSON.stringify(data)}, function(res) {
+                if(res.status) { layer.msg('Đã bật DDNS cho ' + domain, {icon: 1}); cf_dns.get_list(); }
+                else { layer.msg(res.msg, {icon: 2}); $(el).prev('input').prop('checked', false); }
+            });
+        } else {
+            this.request('delete_config', {domain: domain}, function(res) {
+                if(res.status) { layer.msg('Đã tắt DDNS cho ' + domain, {icon: 1}); cf_dns.get_list(); }
+                else { layer.msg(res.msg, {icon: 2}); $(el).prev('input').prop('checked', true); }
+            });
+        }
     },
     
     edit_config_view: function(index) {
-        this.add_config_view(true, index);
-    },
-    
-    duplicate_config: function(index) {
-        this.add_config_view(false, null, this.configs[index]);
-    },
-    
-    save_config: function() {
-        var data = {
-            OLD_RECORD_NAME: $('input[name="OLD_RECORD_NAME"]').val(),
-            AUTH_EMAIL: $('input[name="AUTH_EMAIL"]').val(),
-            AUTH_KEY: $('input[name="AUTH_KEY"]').val(),
-            ZONE_ID: $('input[name="ZONE_ID"]').val(),
-            RECORD_NAME: $('input[name="RECORD_NAME"]').val(),
-            PROXIED: $('select[name="PROXIED"]').val()
-        };
-        
-        var loading = layer.msg('Đang lưu...', {icon: 16, time: 0});
-        this.request('save_config', {data: JSON.stringify(data)}, function(res) {
-            layer.close(loading);
-            if(res.status) {
-                layer.closeAll();
-                layer.msg(res.msg, {icon: 1});
-                cf_dns.get_list();
-            } else {
-                layer.msg(res.msg, {icon: 2});
-            }
-        });
+        this.manage_zone_view();
     },
     
     delete_config: function(domain) {
