@@ -1,0 +1,9 @@
+{
+  "title": "Cloudflare DNS Auto Update",
+  "name": "cf_dns",
+  "ps": "Tự động cập nhật Dynamic IP cho tên miền trên Cloudflare",
+  "versions": "1.0",
+  "checks": "/www/server/panel/plugin/cf_dns",
+  "author": "VictorPhan",
+  "home": "victorphan.net"
+}

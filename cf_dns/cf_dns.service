@@ -1,0 +1,14 @@
+[Unit]
+Description=Cloudflare DNS Updater Service for aaPanel
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/www/server/panel/plugin/cf_dns/
+ExecStart=/www/server/panel/pyenv/bin/python /www/server/panel/plugin/cf_dns/cf_dns_service.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
