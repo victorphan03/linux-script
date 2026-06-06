@@ -175,11 +175,59 @@ async function fetchRecords(email, key, zoneId) {
   return resData.result;
 }
 
+async function addCloudflareRecord(email, key, zoneId, recordName, content, proxied) {
+  if (!email || !key || !zoneId || !recordName || !content) throw new Error("Missing information");
+  
+  const postOptions = {
+    method: 'POST',
+    headers: {
+      'X-Auth-Email': email,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  
+  const data = JSON.stringify({
+    type: "A",
+    name: recordName,
+    content: content,
+    ttl: 120,
+    proxied: proxied
+  });
+  
+  const resData = await fetchCloudflare(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records`, postOptions, data);
+  if (!resData.success) {
+    throw new Error(resData.errors?.[0]?.message || 'Unknown API Error');
+  }
+  return resData;
+}
+
+async function deleteCloudflareRecord(email, key, zoneId, recordId) {
+  if (!email || !key || !zoneId || !recordId) throw new Error("Missing information");
+  
+  const deleteOptions = {
+    method: 'DELETE',
+    headers: {
+      'X-Auth-Email': email,
+      'Authorization': `Bearer ${key}`,
+      'Content-Type': 'application/json'
+    }
+  };
+  
+  const resData = await fetchCloudflare(`https://api.cloudflare.com/client/v4/zones/${zoneId}/dns_records/${recordId}`, deleteOptions);
+  if (!resData.success) {
+    throw new Error(resData.errors?.[0]?.message || 'Unknown API Error');
+  }
+  return resData;
+}
+
 module.exports = {
   checkAndUpdateDns,
   getSettings,
   saveSettings,
   getConfigs,
   saveConfigs,
-  fetchRecords
+  fetchRecords,
+  addCloudflareRecord,
+  deleteCloudflareRecord
 };

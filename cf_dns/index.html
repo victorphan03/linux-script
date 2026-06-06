@@ -1,7 +1,17 @@
 <style>
-.cf-dns-main { padding: 15px; }
-.status-green { color: #20a53a; font-weight: bold; }
-.status-red { color: red; font-weight: bold; }
+    .cf-dns-main {
+        padding: 15px;
+    }
+
+    .status-green {
+        color: #20a53a;
+        font-weight: bold;
+    }
+
+    .status-red {
+        color: red;
+        font-weight: bold;
+    }
 </style>
 <div class="cf-dns-main">
     <div class="bt-form">
@@ -10,7 +20,8 @@
             <div class="info-r">
                 <div class="bt-status" style="margin-top: 5px;">
                     <span id="service_status" class="status-green">Đang chạy</span>
-                    <button class="btn btn-default btn-sm ml10" onclick="cf_dns.toggle_service()">Bật/Tắt Service</button>
+                    <button class="btn btn-default btn-sm ml10" onclick="cf_dns.toggle_service()">Bật/Tắt
+                        Service</button>
                     <button class="btn btn-default btn-sm ml10" onclick="cf_dns.show_logs()">Xem Log</button>
                 </div>
             </div>
@@ -18,286 +29,375 @@
         <div class="line" style="margin-top: 15px;">
             <span class="tname">Thời gian quét</span>
             <div class="info-r">
-                <input class="bt-input-text mr5" type="number" id="loop_interval" value="30" style="width:100px" min="10">
+                <input class="bt-input-text mr5" type="number" id="loop_interval" value="30" style="width:100px"
+                    min="10">
                 <span style="margin-right: 15px;">giây</span>
                 <button class="btn btn-default btn-sm" onclick="cf_dns.save_settings()">Lưu thời gian</button>
             </div>
         </div>
     </div>
-    
+
     <div class="mt15">
-        <button class="btn btn-success btn-sm mb15" onclick="cf_dns.manage_zone_view()">Quản lý Zone (Lấy Danh Sách)</button>
+        <button class="btn btn-success btn-sm mb15" onclick="cf_dns.manage_zone_view()">Quản lý Zone (Lấy Danh
+            Sách)</button>
         <button class="btn btn-warning btn-sm mb15 ml10" onclick="cf_dns.force_update()">Force Update (Test)</button>
         <div id="cf_dns_table"></div>
     </div>
 </div>
 
 <script>
-var cf_dns = {
-    plugin_name: 'cf_dns',
-    configs: [],
-    
-    init: function() {
-        this.get_status();
-        this.get_list();
-        this.get_settings();
-    },
+    var cf_dns = {
+        plugin_name: 'cf_dns',
+        configs: [],
 
-    get_settings: function() {
-        this.request('get_settings', {}, function(res) {
-            if(res && res.interval) {
-                $('#loop_interval').val(res.interval);
-            }
-        });
-    },
+        init: function () {
+            this.get_status();
+            this.get_list();
+            this.get_settings();
+        },
 
-    save_settings: function() {
-        var interval = $('#loop_interval').val();
-        var loading = layer.msg('Đang lưu...', {icon: 16, time: 0});
-        this.request('save_settings', {interval: interval}, function(res) {
-            layer.close(loading);
-            layer.msg(res.msg, {icon: res.status ? 1 : 2});
-            if(res.status) {
+        get_settings: function () {
+            this.request('get_settings', {}, function (res) {
+                if (res && res.interval) {
+                    $('#loop_interval').val(res.interval);
+                }
+            });
+        },
+
+        save_settings: function () {
+            var interval = $('#loop_interval').val();
+            var loading = layer.msg('Đang lưu...', { icon: 16, time: 0 });
+            this.request('save_settings', { interval: interval }, function (res) {
+                layer.close(loading);
+                layer.msg(res.msg, { icon: res.status ? 1 : 2 });
+                if (res.status) {
+                    cf_dns.get_status();
+                }
+            });
+        },
+
+        get_status: function () {
+            this.request('get_service_status', {}, function (res) {
+                if (res.status) {
+                    $('#service_status').attr('class', 'status-green').text('Đang chạy');
+                } else {
+                    $('#service_status').attr('class', 'status-red').text('Đã dừng');
+                }
+            });
+        },
+
+        toggle_service: function () {
+            var status_text = $('#service_status').text();
+            var action = status_text === 'Đang chạy' ? 'stop_service' : 'start_service';
+            var loading = layer.msg('Đang xử lý...', { icon: 16, time: 0 });
+            this.request(action, {}, function (res) {
+                layer.close(loading);
+                layer.msg(res.msg, { icon: res.status ? 1 : 2 });
                 cf_dns.get_status();
-            }
-        });
-    },
-    
-    get_status: function() {
-        this.request('get_service_status', {}, function(res) {
-            if(res.status) {
-                $('#service_status').attr('class', 'status-green').text('Đang chạy');
-            } else {
-                $('#service_status').attr('class', 'status-red').text('Đã dừng');
-            }
-        });
-    },
+            });
+        },
 
-    toggle_service: function() {
-        var status_text = $('#service_status').text();
-        var action = status_text === 'Đang chạy' ? 'stop_service' : 'start_service';
-        var loading = layer.msg('Đang xử lý...', {icon: 16, time: 0});
-        this.request(action, {}, function(res) {
-            layer.close(loading);
-            layer.msg(res.msg, {icon: res.status ? 1 : 2});
-            cf_dns.get_status();
-        });
-    },
-    
-    get_list: function() {
-        var _this = this;
-        var tbody = '';
-        this.request('get_configs', {}, function(res) {
-            for(var i=0; i<res.length; i++) {
-                tbody += '<tr>' +
-                    '<td>' + res[i].RECORD_NAME + '</td>' +
-                    '<td>' + res[i].ZONE_ID + '</td>' +
-                    '<td>' + (res[i].PROXIED === 'true' ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>') + '</td>' +
-                    '<td style="text-align: right;">' +
-                        '<a href="javascript:;" class="btlink" onclick="cf_dns.duplicate_config('+i+')">Nhân bản</a> | ' +
-                        '<a href="javascript:;" class="btlink" onclick="cf_dns.edit_config_view('+i+')">Sửa</a> | ' +
-                        '<a href="javascript:;" class="btlink" onclick="cf_dns.delete_config(\''+res[i].RECORD_NAME+'\')">Xóa</a>' +
-                    '</td>' +
-                '</tr>';
-            }
-            if(res.length == 0) tbody = '<tr><td colspan="4" class="text-center">Chưa có cấu hình nào</td></tr>';
-            
-            var table = '<div class="divtable">' +
-                '<table class="table table-hover">' +
+        get_list: function () {
+            var _this = this;
+            var tbody = '';
+            this.request('get_configs', {}, function (res) {
+                for (var i = 0; i < res.length; i++) {
+                    tbody += '<tr>' +
+                        '<td>' + res[i].RECORD_NAME + '</td>' +
+                        '<td>' + res[i].ZONE_ID + '</td>' +
+                        '<td>' + (res[i].PROXIED === 'true' ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>') + '</td>' +
+                        '<td style="text-align: right;">' +
+                        '<a href="javascript:;" class="btlink" onclick="cf_dns.duplicate_config(' + i + ')">Nhân bản</a> | ' +
+                        '<a href="javascript:;" class="btlink" onclick="cf_dns.edit_config_view(' + i + ')">Sửa</a> | ' +
+                        '<a href="javascript:;" class="btlink" onclick="cf_dns.delete_config(\'' + res[i].RECORD_NAME + '\')">Xóa</a>' +
+                        '</td>' +
+                        '</tr>';
+                }
+                if (res.length == 0) tbody = '<tr><td colspan="4" class="text-center">Chưa có cấu hình nào</td></tr>';
+
+                var table = '<div class="divtable">' +
+                    '<table class="table table-hover">' +
                     '<thead><tr><th>Tên miền (Record)</th><th>Zone ID</th><th>Trạng thái Proxy</th><th style="text-align: right;">Hành động</th></tr></thead>' +
                     '<tbody>' + tbody + '</tbody>' +
-                '</table>' +
-            '</div>';
-            $('#cf_dns_table').html(table);
-            _this.configs = res;
-        });
-    },
-    
-    manage_zone_view: function() {
-        var html = '<div class="bt-form pd20 pb70" style="padding-bottom: 70px;">' +
-            '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_email" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
-            '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_key" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
-            '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_zone" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
-            '<div class="line"><div class="info-r"><button class="btn btn-success btn-sm" onclick="cf_dns.fetch_records()">Tải Danh Sách A Record</button></div></div>' +
-            '<div id="fetch_results" style="margin-top: 15px;"></div>' +
-            '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_credentials()">Lưu Thông Tin</button></div>' +
-        '</div>';
-        
-        layer.open({
-            type: 1,
-            title: 'Quản lý Zone Cloudflare',
-            area: '600px',
-            closeBtn: 1,
-            shadeClose: false,
-            content: html
-        });
-        
-        this.request('get_settings', {}, function(res) {
-            if(res) {
-                if(res.cf_email) $('#cf_email').val(res.cf_email);
-                if(res.cf_key) $('#cf_key').val(res.cf_key);
-                if(res.cf_zone) $('#cf_zone').val(res.cf_zone);
-            }
-            if(!$('#cf_email').val() && cf_dns.configs.length > 0) {
-                $('#cf_email').val(cf_dns.configs[0].AUTH_EMAIL);
-                $('#cf_key').val(cf_dns.configs[0].AUTH_KEY);
-                $('#cf_zone').val(cf_dns.configs[0].ZONE_ID);
-            }
-        });
-    },
-    
-    save_credentials: function() {
-        var email = $('#cf_email').val();
-        var key = $('#cf_key').val();
-        var zone = $('#cf_zone').val();
-        
-        var loading = layer.msg('Đang lưu...', {icon: 16, time: 0});
-        this.request('save_settings', {cf_email: email, cf_key: key, cf_zone: zone}, function(res) {
-            layer.close(loading);
-            layer.msg(res.msg, {icon: res.status ? 1 : 2});
-            if(res.status) {
-                layer.closeAll();
-            }
-        });
-    },
-    
-    fetch_records: function() {
-        var email = $('#cf_email').val();
-        var key = $('#cf_key').val();
-        var zone = $('#cf_zone').val();
-        
-        if(!email || !key || !zone) {
-            layer.msg('Vui lòng nhập đầy đủ thông tin', {icon: 2});
-            return;
-        }
-        
-        var loading = layer.msg('Đang tải danh sách...', {icon: 16, time: 0});
-        this.request('fetch_records', {AUTH_EMAIL: email, AUTH_KEY: key, ZONE_ID: zone}, function(res) {
-            layer.close(loading);
-            if(!res.status) {
-                layer.msg(res.msg, {icon: 2});
+                    '</table>' +
+                    '</div>';
+                $('#cf_dns_table').html(table);
+                _this.configs = res;
+            });
+        },
+
+        manage_zone_view: function () {
+            var html = '<div class="bt-form pd20 pb70" style="padding-bottom: 70px;">' +
+                '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_email" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
+                '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_key" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
+                '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_zone" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
+                '<div class="line"><div class="info-r"><button class="btn btn-success btn-sm" onclick="cf_dns.fetch_records()">Tải Danh Sách A Record</button><button class="btn btn-primary btn-sm ml10" style="margin-left:10px;" onclick="cf_dns.add_record_view()">Thêm Subdomain</button></div></div>' +
+                '<div id="fetch_results" style="margin-top: 15px; height: 350px;"></div>' +
+                '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_credentials()">Lưu Thông Tin</button></div>' +
+                '</div>';
+
+            layer.open({
+                type: 1,
+                title: 'Quản lý Zone Cloudflare',
+                area: '600px',
+                closeBtn: 1,
+                shadeClose: false,
+                content: html
+            });
+
+            this.request('get_settings', {}, function (res) {
+                if (res) {
+                    if (res.cf_email) $('#cf_email').val(res.cf_email);
+                    if (res.cf_key) $('#cf_key').val(res.cf_key);
+                    if (res.cf_zone) $('#cf_zone').val(res.cf_zone);
+                }
+                if (!$('#cf_email').val() && cf_dns.configs.length > 0) {
+                    $('#cf_email').val(cf_dns.configs[0].AUTH_EMAIL);
+                    $('#cf_key').val(cf_dns.configs[0].AUTH_KEY);
+                    $('#cf_zone').val(cf_dns.configs[0].ZONE_ID);
+                }
+            });
+        },
+
+        save_credentials: function () {
+            var email = $('#cf_email').val();
+            var key = $('#cf_key').val();
+            var zone = $('#cf_zone').val();
+
+            var loading = layer.msg('Đang lưu...', { icon: 16, time: 0 });
+            this.request('save_settings', { cf_email: email, cf_key: key, cf_zone: zone }, function (res) {
+                layer.close(loading);
+                layer.msg(res.msg, { icon: res.status ? 1 : 2 });
+                if (res.status) {
+                    layer.closeAll();
+                }
+            });
+        },
+
+        fetch_records: function () {
+            var email = $('#cf_email').val();
+            var key = $('#cf_key').val();
+            var zone = $('#cf_zone').val();
+
+            if (!email || !key || !zone) {
+                layer.msg('Vui lòng nhập đầy đủ thông tin', { icon: 2 });
                 return;
             }
-            
-            var records = res.data;
-            var tbody = '';
-            
-            var activeDomains = cf_dns.configs.map(function(c) { return c.RECORD_NAME; });
-            
-            for(var i=0; i<records.length; i++) {
-                var r = records[i];
-                var isActive = activeDomains.indexOf(r.name) !== -1;
-                var proxied = r.proxied ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>';
-                
-                var switchHtml = '<div class="bt-status" style="margin-top:0px;">' +
-                    '<input class="btswitch btswitch-ios" id="ddns_'+i+'" type="checkbox" '+(isActive?'checked':'')+'>' +
-                    '<label class="btswitch-btn" for="ddns_'+i+'" onclick="cf_dns.toggle_ddns(\''+r.name+'\', '+r.proxied+', \''+email+'\', \''+key+'\', \''+zone+'\', this)"></label>' +
-                '</div>';
-                
-                tbody += '<tr>' +
-                    '<td>' + r.name + '</td>' +
-                    '<td>' + r.content + '</td>' +
-                    '<td>' + proxied + '</td>' +
-                    '<td>' + switchHtml + '</td>' +
-                '</tr>';
-            }
-            
-            if(records.length === 0) {
-                tbody = '<tr><td colspan="4" class="text-center">Không có A Record nào</td></tr>';
-            }
-            
-            var table = '<div class="divtable" style="max-height: 350px; overflow-y: auto;">' +
-                '<table class="table table-hover">' +
+
+            var loading = layer.msg('Đang tải danh sách...', { icon: 16, time: 0 });
+            this.request('fetch_records', { AUTH_EMAIL: email, AUTH_KEY: key, ZONE_ID: zone }, function (res) {
+                layer.close(loading);
+                if (!res.status) {
+                    layer.msg(res.msg, { icon: 2 });
+                    return;
+                }
+
+                var records = res.data;
+                var tbody = '';
+
+                var activeDomains = cf_dns.configs.map(function (c) { return c.RECORD_NAME; });
+
+                for (var i = 0; i < records.length; i++) {
+                    var r = records[i];
+                    var isActive = activeDomains.indexOf(r.name) !== -1;
+                    var proxied = r.proxied ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>';
+
+                    var switchHtml = '<div class="bt-status" style="margin-top:0px;">' +
+                        '<input class="btswitch btswitch-ios" id="ddns_' + i + '" type="checkbox" ' + (isActive ? 'checked' : '') + '>' +
+                        '<label class="btswitch-btn" for="ddns_' + i + '" onclick="cf_dns.toggle_ddns(\'' + r.name + '\', ' + r.proxied + ', \'' + email + '\', \'' + key + '\', \'' + zone + '\', this)"></label>' +
+                        '</div>';
+
+                    tbody += '<tr>' +
+                        '<td>' + r.name + '</td>' +
+                        '<td>' + r.content + '</td>' +
+                        '<td>' + proxied + '</td>' +
+                        '<td><div style="display: flex; align-items: center;">' + switchHtml + '<a href="javascript:;" class="btlink" style="color: red; margin-left: 15px;" onclick="cf_dns.delete_cloudflare_record(\'' + r.id + '\', \'' + r.name + '\', \'' + email + '\', \'' + key + '\', \'' + zone + '\')">Xóa</a></div></td>' +
+                        '</tr>';
+                }
+
+                if (records.length === 0) {
+                    tbody = '<tr><td colspan="4" class="text-center">Không có A Record nào</td></tr>';
+                }
+
+                var table = '<div class="divtable" style="max-height: 350px; overflow-y: auto;">' +
+                    '<table class="table table-hover">' +
                     '<thead><tr><th>Tên miền</th><th>IP Hiện tại</th><th>Proxy</th><th>DDNS (Bật/Tắt)</th></tr></thead>' +
                     '<tbody>' + tbody + '</tbody>' +
-                '</table>' +
-            '</div>';
-            
-            $('#fetch_results').html(table);
-        });
-    },
-    
-    toggle_ddns: function(domain, proxied, email, key, zone, el) {
-        var isChecked = !$(el).prev('input').prop('checked');
-        if(isChecked) {
-            var data = {
+                    '</table>' +
+                    '</div>';
+
+                $('#fetch_results').html(table);
+            });
+        },
+
+        add_record_view: function () {
+            var email = $('#cf_email').val();
+            var key = $('#cf_key').val();
+            var zone = $('#cf_zone').val();
+
+            if (!email || !key || !zone) {
+                layer.msg('Vui lòng nhập Email, API Key và Zone ID trước', { icon: 2 });
+                return;
+            }
+
+            var html = '<div class="bt-form pd20 pb70">' +
+                '<div class="line"><span class="tname">Tên miền</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="new_record_name" style="width:250px" placeholder="Ví dụ: sub.domain.com"></div></div>' +
+                '<div class="line"><span class="tname">IPv4</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="new_record_content" style="width:250px" placeholder="Địa chỉ IP (vd: 1.1.1.1)"></div></div>' +
+                '<div class="line"><span class="tname">Proxy</span><div class="info-r">' +
+                '<select class="bt-input-text mr5" id="new_record_proxied" style="width:100px">' +
+                '<option value="false">Tắt</option>' +
+                '<option value="true">Bật</option>' +
+                '</select>' +
+                '</div></div>' +
+                '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.close(cf_dns.addLayerIndex)">Hủy</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.submit_add_record(\'' + email + '\', \'' + key + '\', \'' + zone + '\')">Thêm</button></div>' +
+                '</div>';
+
+            this.addLayerIndex = layer.open({
+                type: 1,
+                title: 'Thêm A Record mới',
+                area: '450px',
+                closeBtn: 1,
+                shadeClose: false,
+                content: html
+            });
+        },
+
+        submit_add_record: function (email, key, zone) {
+            var name = $('#new_record_name').val();
+            var content = $('#new_record_content').val();
+            var proxied = $('#new_record_proxied').val();
+
+            if (!name || !content) {
+                layer.msg('Vui lòng nhập tên miền và IP', { icon: 2 });
+                return;
+            }
+
+            var loading = layer.msg('Đang thêm...', { icon: 16, time: 0 });
+            this.request('add_cloudflare_record', {
                 AUTH_EMAIL: email,
                 AUTH_KEY: key,
                 ZONE_ID: zone,
-                RECORD_NAME: domain,
-                PROXIED: proxied ? 'true' : 'false'
-            };
-            this.request('save_config', {data: JSON.stringify(data)}, function(res) {
-                if(res.status) { layer.msg('Đã bật DDNS cho ' + domain, {icon: 1}); cf_dns.get_list(); }
-                else { layer.msg(res.msg, {icon: 2}); $(el).prev('input').prop('checked', false); }
-            });
-        } else {
-            this.request('delete_config', {domain: domain}, function(res) {
-                if(res.status) { layer.msg('Đã tắt DDNS cho ' + domain, {icon: 1}); cf_dns.get_list(); }
-                else { layer.msg(res.msg, {icon: 2}); $(el).prev('input').prop('checked', true); }
-            });
-        }
-    },
-    
-    edit_config_view: function(index) {
-        this.manage_zone_view();
-    },
-    
-    delete_config: function(domain) {
-        layer.confirm('Bạn có chắc chắn muốn xóa cấu hình tên miền ['+domain+'] không?', {title: 'Xóa cấu hình'}, function(index) {
-            var loading = layer.msg('Đang xóa...', {icon: 16, time: 0});
-            cf_dns.request('delete_config', {domain: domain}, function(res) {
+                record_name: name,
+                content: content,
+                proxied: proxied
+            }, function (res) {
                 layer.close(loading);
-                layer.msg(res.msg, {icon: res.status ? 1 : 2});
+                if (res.status) {
+                    layer.msg(res.msg, { icon: 1 });
+                    layer.close(cf_dns.addLayerIndex);
+                    cf_dns.fetch_records(); // reload list
+                } else {
+                    layer.msg(res.msg, { icon: 2 });
+                }
+            });
+        },
+
+        delete_cloudflare_record: function (record_id, record_name, email, key, zone) {
+            layer.confirm('Bạn có chắc chắn muốn xóa bản ghi [' + record_name + '] trên Cloudflare không?', { title: 'Xóa Record' }, function (index) {
+                var loading = layer.msg('Đang xóa...', { icon: 16, time: 0 });
+                cf_dns.request('delete_cloudflare_record', {
+                    AUTH_EMAIL: email,
+                    AUTH_KEY: key,
+                    ZONE_ID: zone,
+                    record_id: record_id
+                }, function (res) {
+                    layer.close(loading);
+                    if (res.status) {
+                        layer.msg(res.msg, { icon: 1 });
+                        cf_dns.fetch_records(); // reload list
+
+                        // Xóa luôn khỏi DDNS nếu đang bật
+                        cf_dns.request('delete_config', { domain: record_name }, function (r2) {
+                            cf_dns.get_list();
+                        });
+                    } else {
+                        layer.msg(res.msg, { icon: 2 });
+                    }
+                });
+            });
+        },
+
+        toggle_ddns: function (domain, proxied, email, key, zone, el) {
+            var isChecked = !$(el).prev('input').prop('checked');
+            if (isChecked) {
+                var data = {
+                    AUTH_EMAIL: email,
+                    AUTH_KEY: key,
+                    ZONE_ID: zone,
+                    RECORD_NAME: domain,
+                    PROXIED: proxied ? 'true' : 'false'
+                };
+                this.request('save_config', { data: JSON.stringify(data) }, function (res) {
+                    if (res.status) { layer.msg('Đã bật DDNS cho ' + domain, { icon: 1 }); cf_dns.get_list(); }
+                    else { layer.msg(res.msg, { icon: 2 }); $(el).prev('input').prop('checked', false); }
+                });
+            } else {
+                this.request('delete_config', { domain: domain }, function (res) {
+                    if (res.status) { layer.msg('Đã tắt DDNS cho ' + domain, { icon: 1 }); cf_dns.get_list(); }
+                    else { layer.msg(res.msg, { icon: 2 }); $(el).prev('input').prop('checked', true); }
+                });
+            }
+        },
+
+        edit_config_view: function (index) {
+            this.manage_zone_view();
+        },
+
+        delete_config: function (domain) {
+            layer.confirm('Bạn có chắc chắn muốn xóa cấu hình tên miền [' + domain + '] không?', { title: 'Xóa cấu hình' }, function (index) {
+                var loading = layer.msg('Đang xóa...', { icon: 16, time: 0 });
+                cf_dns.request('delete_config', { domain: domain }, function (res) {
+                    layer.close(loading);
+                    layer.msg(res.msg, { icon: res.status ? 1 : 2 });
+                    cf_dns.get_list();
+                });
+            });
+        },
+
+        show_logs: function () {
+            this.request('get_logs', {}, function (res) {
+                layer.open({
+                    type: 1,
+                    title: 'Nhật ký hoạt động',
+                    area: ['700px', '500px'],
+                    shadeClose: false,
+                    closeBtn: 1,
+                    content: '<div class="setchmod pd20 pb70">' +
+                        '<pre id="cf_dns_log" style="height: 350px; overflow-y: auto; background: #333; color: #fff; padding: 10px; border-radius: 4px; font-family: monospace;">' + (res || 'Chưa có nhật ký nào.') + '</pre>' +
+                        '<div class="bt-form-submit-btn"><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.clear_logs()">Xóa Log</button><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button></div>' +
+                        '</div>'
+                });
+                setTimeout(function () {
+                    var d = $('#cf_dns_log');
+                    d.scrollTop(d[0].scrollHeight);
+                }, 100);
+            });
+        },
+
+        clear_logs: function () {
+            var loading = layer.msg('Đang xóa...', { icon: 16, time: 0 });
+            this.request('clear_logs', {}, function (res) {
+                layer.close(loading);
+                layer.msg(res.msg, { icon: res.status ? 1 : 2 });
+                $('#cf_dns_log').text('Chưa có nhật ký nào.');
+            });
+        },
+
+        force_update: function () {
+            var loading = layer.msg('Đang thực hiện Force Update...', { icon: 16, time: 0 });
+            this.request('force_update', {}, function (res) {
+                layer.close(loading);
+                layer.alert(res.msg, { title: res.status ? 'Thành công' : 'Lỗi', icon: res.status ? 1 : 2 });
                 cf_dns.get_list();
             });
-        });
-    },
-    
-    show_logs: function() {
-        this.request('get_logs', {}, function(res) {
-            layer.open({
-                type: 1,
-                title: 'Nhật ký hoạt động',
-                area: ['700px', '500px'],
-                shadeClose: false,
-                closeBtn: 1,
-                content: '<div class="setchmod pd20 pb70">' +
-                    '<pre id="cf_dns_log" style="height: 350px; overflow-y: auto; background: #333; color: #fff; padding: 10px; border-radius: 4px; font-family: monospace;">' + (res || 'Chưa có nhật ký nào.') + '</pre>' +
-                    '<div class="bt-form-submit-btn"><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.clear_logs()">Xóa Log</button><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button></div>' +
-                '</div>'
+        },
+
+        request: function (action, args, callback) {
+            $.post('/plugin?action=a&name=' + this.plugin_name + '&s=' + action, args, function (res) {
+                if (callback) callback(res);
             });
-            setTimeout(function(){
-                var d = $('#cf_dns_log');
-                d.scrollTop(d[0].scrollHeight);
-            }, 100);
-        });
-    },
-    
-    clear_logs: function() {
-        var loading = layer.msg('Đang xóa...', {icon: 16, time: 0});
-        this.request('clear_logs', {}, function(res) {
-            layer.close(loading);
-            layer.msg(res.msg, {icon: res.status ? 1 : 2});
-            $('#cf_dns_log').text('Chưa có nhật ký nào.');
-        });
-    },
+        }
+    };
 
-    force_update: function() {
-        var loading = layer.msg('Đang thực hiện Force Update...', {icon: 16, time: 0});
-        this.request('force_update', {}, function(res) {
-            layer.close(loading);
-            layer.alert(res.msg, {title: res.status ? 'Thành công' : 'Lỗi', icon: res.status ? 1 : 2});
-            cf_dns.get_list();
-        });
-    },
-
-    request: function(action, args, callback) {
-        $.post('/plugin?action=a&name=' + this.plugin_name + '&s=' + action, args, function(res) {
-            if(callback) callback(res);
-        });
-    }
-};
-
-cf_dns.init();
+    cf_dns.init();
 </script>

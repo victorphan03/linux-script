@@ -100,6 +100,92 @@ class cf_dns_main:
         except Exception as e:
             return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
 
+    # Them Record moi tren Cloudflare
+    def add_cloudflare_record(self, args):
+        auth_email = getattr(args, 'AUTH_EMAIL', '')
+        auth_key = getattr(args, 'AUTH_KEY', '')
+        zone_id = getattr(args, 'ZONE_ID', '')
+        record_name = getattr(args, 'record_name', '')
+        content = getattr(args, 'content', '')
+        proxied = getattr(args, 'proxied', 'false') == 'true'
+
+        if hasattr(args, 'get'):
+            auth_email = auth_email or args.get('AUTH_EMAIL', '')
+            auth_key = auth_key or args.get('AUTH_KEY', '')
+            zone_id = zone_id or args.get('ZONE_ID', '')
+            record_name = record_name or args.get('record_name', '')
+            content = content or args.get('content', '')
+            if not getattr(args, 'proxied', ''):
+                proxied = args.get('proxied', 'false') == 'true'
+
+        if not auth_email or not auth_key or not zone_id or not record_name or not content:
+            return public.returnMsg(False, 'Vui lòng điền đầy đủ thông tin')
+            
+        try:
+            import urllib.request
+            url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
+            data = json.dumps({
+                "type": "A",
+                "name": record_name,
+                "content": content,
+                "ttl": 120,
+                "proxied": proxied
+            }).encode('utf-8')
+            
+            req = urllib.request.Request(url, data=data, headers={
+                'X-Auth-Email': auth_email,
+                'Authorization': f'Bearer {auth_key}',
+                'Content-Type': 'application/json'
+            }, method='POST')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                
+            if not res_data.get('success'):
+                err_msg = res_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+                return public.returnMsg(False, f'Lỗi API: {err_msg}')
+                
+            return public.returnMsg(True, 'Đã thêm Record thành công')
+        except Exception as e:
+            return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
+
+    # Xoa Record tren Cloudflare
+    def delete_cloudflare_record(self, args):
+        auth_email = getattr(args, 'AUTH_EMAIL', '')
+        auth_key = getattr(args, 'AUTH_KEY', '')
+        zone_id = getattr(args, 'ZONE_ID', '')
+        record_id = getattr(args, 'record_id', '')
+
+        if hasattr(args, 'get'):
+            auth_email = auth_email or args.get('AUTH_EMAIL', '')
+            auth_key = auth_key or args.get('AUTH_KEY', '')
+            zone_id = zone_id or args.get('ZONE_ID', '')
+            record_id = record_id or args.get('record_id', '')
+
+        if not auth_email or not auth_key or not zone_id or not record_id:
+            return public.returnMsg(False, 'Thiếu thông tin API hoặc Record ID')
+            
+        try:
+            import urllib.request
+            url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{record_id}"
+            
+            req = urllib.request.Request(url, headers={
+                'X-Auth-Email': auth_email,
+                'Authorization': f'Bearer {auth_key}',
+                'Content-Type': 'application/json'
+            }, method='DELETE')
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                res_data = json.loads(response.read().decode('utf-8'))
+                
+            if not res_data.get('success'):
+                err_msg = res_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+                return public.returnMsg(False, f'Lỗi API: {err_msg}')
+                
+            return public.returnMsg(True, 'Đã xóa Record thành công')
+        except Exception as e:
+            return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
+
     # Xoa config
     def delete_config(self, args):
         domain = getattr(args, 'domain', '')

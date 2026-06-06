@@ -12,6 +12,9 @@ Install_cf_dns()
     systemctl enable cf_dns
     systemctl start cf_dns
 
+    # Copy icon to aaPanel static dir
+    cp -f $pluginPath/icon.png /www/server/panel/BTPanel/static/img/soft_ico/ico-cf_dns.png
+
     echo 'Successify'
 }
 
@@ -21,6 +24,9 @@ Uninstall_cf_dns()
     systemctl disable cf_dns
     rm -f /etc/systemd/system/cf_dns.service
     systemctl daemon-reload
+
+    # Xoá icon trong static dir
+    rm -f /www/server/panel/BTPanel/static/img/soft_ico/ico-cf_dns.png
 
     # Xoá toàn bộ thư mục plugin
     rm -rf $pluginPath
