@@ -3,6 +3,12 @@ from tkinter import ttk, filedialog, messagebox
 import json
 import os
 import sys
+import traceback
+def my_excepthook(t, v, tb):
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crash.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        traceback.print_exception(t, v, tb, file=f)
+sys.excepthook = my_excepthook
 import ctypes
 import threading
 import subprocess
@@ -24,9 +30,27 @@ def is_admin():
     except:
         return False
 
+with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace.log"), "a") as f:
+    f.write("App started. is_admin=" + str(is_admin()) + "\n")
+
 if not is_admin():
     script = os.path.abspath(sys.argv[0])
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, script, None, 1)
+    
+    # Resolve mapped network drives (like WSL's X: drive) to UNC path for elevated session
+    drive, tail = os.path.splitdrive(script)
+    if drive:
+        try:
+            import subprocess
+            out = subprocess.check_output(
+                ['powershell', '-NoProfile', '-Command', f"(Get-WmiObject Win32_LogicalDisk -Filter 'DeviceID=''{drive}''').ProviderName"],
+                creationflags=0x08000000, text=True
+            ).strip()
+            if out:
+                script = out + tail
+        except Exception:
+            pass
+            
+    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
     sys.exit()
 
 # --- CONFIG ---
@@ -44,7 +68,10 @@ def load_config():
         "SshExePath": "ssh.exe", "LanInterface": "Ethernet", "LanMetric": 10,
         "WiFiInterface": "WiFi 2", "WiFiMetric": 500, "WiFiGateway": "10.0.0.1",
         "DnsCheckIntervalMinutes": 10, "AutoStartTunnel": True,
-        "AutoConnectWiFi": False, "WiFiProfile": ""
+        "AutoConnectWiFi": False, "WiFiProfile": "",
+        "UseFirewall": True, "UseStunnel": True, "UseSSH": True,
+        "StunnelExePath": "C:\\Program Files (x86)\\stunnel\\bin\\stunnel.exe",
+        "StunnelRemotePort": 8443, "StunnelLocalPort": 2222
     }
 
 def save_config(config):
@@ -82,6 +109,7 @@ class HomelabApp(tk.Tk):
         self.interfaces = network_ops.get_network_interfaces()
         
         self.ssh_process = None
+        self.stunnel_process = None
         self.running = True
         self.last_ip = ""
         
@@ -129,12 +157,34 @@ class HomelabApp(tk.Tk):
         self.lbl_ip = ttk.Label(status_frame, text="Homelab IP: Resolving...", foreground="blue")
         self.lbl_ip.grid(row=2, column=0, padx=10, pady=5, sticky='w')
         
+        # Pipeline Frame
+        pipe_frame = ttk.LabelFrame(self.tab_dash, text="Connection Pipeline (Choose your steps)")
+        pipe_frame.pack(fill='x', padx=10, pady=5)
+        
+        def save_and_apply():
+            self.save_dash_config()
+            
+        self.var_use_fw = tk.BooleanVar(value=self.config.get("UseFirewall", True))
+        ttk.Checkbutton(pipe_frame, text="Step 1: Apply Firewall Rules (Prevent IP Leaks)", variable=self.var_use_fw, command=save_and_apply).grid(row=0, column=0, sticky='w', padx=10, pady=2)
+        
+        self.var_use_wifi = tk.BooleanVar(value=self.config.get("AutoConnectWiFi", False))
+        ttk.Checkbutton(pipe_frame, text="Step 2: Auto-connect to WiFi", variable=self.var_use_wifi, command=save_and_apply).grid(row=1, column=0, sticky='w', padx=10, pady=2)
+        
+        self.var_stunnel = tk.BooleanVar(value=self.config.get("UseStunnel", True))
+        ttk.Checkbutton(pipe_frame, text="Step 3: Route via Stunnel (Local Proxy)", variable=self.var_stunnel, command=save_and_apply).grid(row=2, column=0, sticky='w', padx=10, pady=2)
+        
+        self.var_use_ssh = tk.BooleanVar(value=self.config.get("UseSSH", True))
+        ttk.Checkbutton(pipe_frame, text="Step 4: Launch Reverse SSH Tunnel", variable=self.var_use_ssh, command=save_and_apply).grid(row=3, column=0, sticky='w', padx=10, pady=2)
+        
+        self.var_auto = tk.BooleanVar(value=self.config.get("AutoStartTunnel", True))
+        ttk.Checkbutton(pipe_frame, text="Auto-start pipeline on launch", variable=self.var_auto, command=save_and_apply).grid(row=4, column=0, sticky='w', padx=10, pady=5)
+        
         # Controls Frame
         ctrl_frame = ttk.Frame(self.tab_dash)
         ctrl_frame.pack(fill='x', padx=10, pady=5)
         
-        ttk.Button(ctrl_frame, text="Start SSH Tunnel", command=lambda: threading.Thread(target=self.start_tunnel, daemon=True).start()).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(ctrl_frame, text="Stop SSH Tunnel", command=self.stop_tunnel).grid(row=0, column=1, padx=5, pady=5)
+        ttk.Button(ctrl_frame, text="Start Pipeline", command=lambda: threading.Thread(target=self.start_tunnel, daemon=True).start()).grid(row=0, column=0, padx=5, pady=5)
+        ttk.Button(ctrl_frame, text="Stop All", command=self.stop_tunnel).grid(row=0, column=1, padx=5, pady=5)
         ttk.Button(ctrl_frame, text="Apply Network Rules", command=self.apply_network).grid(row=1, column=0, padx=5, pady=5)
         ttk.Button(ctrl_frame, text="Remove Network Rules", command=self.remove_network).grid(row=1, column=1, padx=5, pady=5)
         
@@ -171,8 +221,14 @@ class HomelabApp(tk.Tk):
         self.var_gw = tk.StringVar(value=self.config.get("WiFiGateway"))
         ttk.Entry(f, textvariable=self.var_gw).grid(row=4, column=1, pady=5, sticky='ew')
         
+        ttk.Label(f, text="Target WiFi Profile:").grid(row=5, column=0, sticky='w', pady=5)
+        self.var_profile = tk.StringVar(value=self.config.get("WiFiProfile", ""))
+        ttk.Entry(f, textvariable=self.var_profile).grid(row=5, column=1, pady=5, sticky='ew')
+        
+        ttk.Button(f, text="Save Config", command=self.save_net_config).grid(row=6, column=1, pady=10, sticky='e')
+        
         wifi_conn_frame = ttk.LabelFrame(f, text="Auto-Connect WiFi (4G Router)")
-        wifi_conn_frame.grid(row=5, column=0, columnspan=2, pady=10, sticky='ew')
+        wifi_conn_frame.grid(row=7, column=0, columnspan=2, pady=10, sticky='ew')
         
         self.var_autoconn = tk.BooleanVar(value=self.config.get("AutoConnectWiFi", False))
         ttk.Checkbutton(wifi_conn_frame, text="Connect to WiFi profile before starting tunnel", variable=self.var_autoconn).grid(row=0, column=0, columnspan=3, pady=5, sticky='w', padx=5)
@@ -189,7 +245,7 @@ class HomelabApp(tk.Tk):
         refresh_wifi_profiles()
         wifi_conn_frame.columnconfigure(1, weight=1)
         
-        ttk.Button(f, text="Save & Apply Network", command=self.save_and_apply_network).grid(row=6, column=1, pady=10, sticky='e')
+        ttk.Button(f, text="Save & Apply Network", command=self.save_and_apply_network).grid(row=8, column=1, pady=10, sticky='e')
         f.columnconfigure(1, weight=1)
 
     def _build_ssh(self):
@@ -214,9 +270,7 @@ class HomelabApp(tk.Tk):
         self.var_rmport = add_row("Remote RDP Port:", "RemoteRdpPort", 4)
         self.var_lcport = add_row("Local RDP Port:", "LocalRdpPort", 5)
         self.var_intv = add_row("DNS Check (min):", "DnsCheckIntervalMinutes", 6)
-        
-        self.var_auto = tk.BooleanVar(value=self.config.get("AutoStartTunnel", True))
-        ttk.Checkbutton(f, text="Auto-start tunnel on launch", variable=self.var_auto).grid(row=7, column=1, pady=5, sticky='w')
+        self.var_stloc = add_row("Stunnel Local Port:", "StunnelLocalPort", 7)
         
         ttk.Button(f, text="Save Config", command=self.save_ssh_config).grid(row=8, column=1, pady=10, sticky='e')
         
@@ -243,7 +297,9 @@ class HomelabApp(tk.Tk):
     def update_status(self):
         # Check SSH status
         alive = self.ssh_process is not None and self.ssh_process.poll() is None
-        self.lbl_ssh.config(text=f"SSH Tunnel: {'Running' if alive else 'Stopped'}", foreground="green" if alive else "red")
+        def _update():
+            self.lbl_ssh.config(text=f"SSH Tunnel: {'Running' if alive else 'Stopped'}", foreground="green" if alive else "red")
+        self.after(0, _update)
 
     def on_unmap(self, event):
         if event.widget == self.root and self.root.state() == 'iconic':
@@ -286,7 +342,7 @@ class HomelabApp(tk.Tk):
         except Exception as e:
             logger.error(f"Tray icon error: {e}")
 
-    def save_and_apply_network(self):
+    def save_net_config(self):
         self.config.update({
             "LanInterface": self.var_lan.get(),
             "LanMetric": int(self.var_lan_m.get()),
@@ -297,71 +353,112 @@ class HomelabApp(tk.Tk):
             "WiFiProfile": self.var_wifiprof.get()
         })
         save_config(self.config)
+        logger.info("Saved Network configuration.")
+
+    def save_and_apply_network(self):
+        self.save_net_config()
         threading.Thread(target=self.apply_network, daemon=True).start()
+
+    def save_dash_config(self):
+        self.config.update({
+            "UseFirewall": self.var_use_fw.get(),
+            "AutoConnectWiFi": self.var_use_wifi.get(),
+            "UseStunnel": self.var_stunnel.get(),
+            "UseSSH": self.var_use_ssh.get(),
+            "AutoStartTunnel": self.var_auto.get()
+        })
+        save_config(self.config)
+        logger.info("Pipeline config saved.")
 
     def save_ssh_config(self):
         self.config.update({
             "HomelabHost": self.var_host.get(), "SshUser": self.var_user.get(),
             "SshPort": int(self.var_port.get()), "SshKeyPath": self.var_key.get(),
             "RemoteRdpPort": int(self.var_rmport.get()), "LocalRdpPort": int(self.var_lcport.get()),
-            "DnsCheckIntervalMinutes": int(self.var_intv.get()), "AutoStartTunnel": self.var_auto.get()
+            "DnsCheckIntervalMinutes": int(self.var_intv.get()), "StunnelLocalPort": int(self.var_stloc.get())
         })
         save_config(self.config)
         logger.info("Saved SSH configuration.")
+        
+        # Auto-restart tunnel if it's currently running
+        if self.ssh_process or self.stunnel_process:
+            logger.info("Config changed, auto-restarting tunnel...")
+            self.stop_tunnel()
+            threading.Thread(target=self.start_tunnel, daemon=True).start()
 
     def apply_network(self):
+        if not self.config.get("UseFirewall", True):
+            self.remove_network()
+            return
+            
         logger.info("Applying network rules...")
         network_ops.apply_interface_metrics(self.config["LanInterface"], self.config["LanMetric"], self.config["WiFiInterface"], self.config["WiFiMetric"])
         network_ops.apply_firewall_rules(self.config["WiFiInterface"])
         if self.last_ip:
             network_ops.update_static_route(self.last_ip, self.config["WiFiInterface"], self.config["WiFiGateway"])
             network_ops.block_ip_on_lan(self.last_ip, self.config["LanInterface"])
-        self.lbl_fw.config(text="Firewall Rules: Active", foreground="green")
+        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Active", foreground="green"))
 
     def remove_network(self):
         logger.info("Removing network rules...")
         network_ops.remove_firewall_rules()
         network_ops.remove_static_routes()
-        self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red")
+        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red"))
 
     def start_tunnel(self):
         if self.ssh_process and self.ssh_process.poll() is None:
             return
             
         if self.config.get("AutoConnectWiFi") and self.config.get("WiFiProfile"):
-            logger.info(f"Auto-connecting to WiFi '{self.config['WiFiProfile']}'...")
+            logger.info(f"Connecting to WiFi '{self.config['WiFiProfile']}'...")
             network_ops.connect_wifi(self.config["WiFiProfile"], self.config["WiFiInterface"])
             time.sleep(3)
             
-        logger.info("Applying network rules...")
+        if self.config.get("UseFirewall", True):
+            self.apply_network()
+            
+        if not self.config.get("UseSSH", True):
+            logger.info("Reverse SSH is disabled in pipeline.")
+            return
+            
         network_ops.kill_orphaned_ssh()
         
         # Explicitly bind to WiFi IP to bypass Windows routing quirk
         wifi_ip = network_ops.get_interface_ip(self.config.get("WiFiInterface", "WiFi 2"))
         
+        use_stunnel = self.config.get("UseStunnel", True)
+        stunnel_local = self.config.get("StunnelLocalPort", 2222)
+        
+        # Determine actual SSH target
+        target_host = "127.0.0.1" if use_stunnel else self.config["HomelabHost"]
+        target_port = stunnel_local if use_stunnel else self.config.get("SshPort", 22)
+        
         network_ops.kill_remote_port(
             ssh_exe=self.config.get("SshExePath", "ssh.exe"),
-            host=self.config["HomelabHost"],
+            host=target_host,
             port=self.config["RemoteRdpPort"],
             user=self.config["SshUser"],
             key_path=self.config.get("SshKeyPath"),
-            ssh_port=self.config.get("SshPort", 22),
-            bind_ip=wifi_ip
+            ssh_port=target_port,
+            bind_ip=wifi_ip if not use_stunnel else None
         )
         
+        if use_stunnel:
+            logger.info(f"Using pre-configured Stunnel on 127.0.0.1:{stunnel_local}")
+
         cmd = [
             self.config.get("SshExePath", "ssh.exe"), "-N",
             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "StrictHostKeyChecking=accept-new"
         ]
         if self.config.get("SshKeyPath"):
             cmd.extend(["-i", self.config["SshKeyPath"]])
-        cmd.extend(["-p", str(self.config["SshPort"])])
+        cmd.extend(["-p", str(target_port)])
         cmd.extend(["-R", f'{self.config["RemoteRdpPort"]}:localhost:{self.config["LocalRdpPort"]}'])
         
-        if wifi_ip:
+        if wifi_ip and not use_stunnel:
             cmd.extend(["-b", wifi_ip])
             
-        cmd.append(f'{self.config["SshUser"]}@{self.config["HomelabHost"]}')
+        cmd.append(f'{self.config["SshUser"]}@{target_host}')
         
         try:
             self.ssh_process = subprocess.Popen(cmd, creationflags=0x08000000, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
@@ -385,10 +482,15 @@ class HomelabApp(tk.Tk):
         self.update_status()
 
     def stop_tunnel(self):
-        if self.ssh_process and self.ssh_process.poll() is None:
-            self.ssh_process.terminate()
+        if self.ssh_process:
+            try:
+                self.ssh_process.terminate()
+                self.ssh_process.wait(timeout=2)
+            except:
+                self.ssh_process.kill()
             self.ssh_process = None
             logger.info("SSH Tunnel stopped.")
+            
         network_ops.kill_orphaned_ssh()
 
     def add_to_startup(self):
@@ -438,26 +540,27 @@ class HomelabApp(tk.Tk):
     # --- BACKGROUND THREAD ---
     def background_worker(self):
         logger.info("Background thread started.")
-        self.lbl_fw.config(text="Firewall Rules: Checking...")
+        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Checking..."))
         if network_ops.test_firewall_rules_active():
-            self.lbl_fw.config(text="Firewall Rules: Active", foreground="green")
+            self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Active", foreground="green"))
         else:
-            self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red")
+            self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red"))
             
         while self.running:
-            ip = network_ops.resolve_ip(self.config["HomelabHost"])
-            if ip:
-                self.lbl_ip.config(text=f"Homelab IP: {ip}", foreground="blue")
-                if ip != self.last_ip:
-                    logger.info(f"DNS IP changed: {self.last_ip} -> {ip}")
-                    self.last_ip = ip
-                    network_ops.update_static_route(ip, self.config["WiFiInterface"], self.config["WiFiGateway"])
-                    network_ops.block_ip_on_lan(ip, self.config["LanInterface"])
-            else:
-                self.lbl_ip.config(text=f"Homelab IP: Failed to resolve", foreground="red")
+            if self.config.get("UseFirewall", True):
+                ip = network_ops.resolve_ip(self.config["HomelabHost"])
+                if ip:
+                    self.after(0, lambda ip_val=ip: self.lbl_ip.config(text=f"Homelab IP: {ip_val}", foreground="blue"))
+                    if ip != self.last_ip:
+                        logger.info(f"DNS IP changed: {self.last_ip} -> {ip}")
+                        self.last_ip = ip
+                        network_ops.update_static_route(ip, self.config["WiFiInterface"], self.config["WiFiGateway"])
+                        network_ops.block_ip_on_lan(ip, self.config["LanInterface"])
+                else:
+                    self.after(0, lambda: self.lbl_ip.config(text=f"Homelab IP: Failed to resolve", foreground="red"))
             
             # Keepalive check
-            if self.config.get("AutoStartTunnel", True):
+            if self.config.get("AutoStartTunnel", True) and self.config.get("UseSSH", True):
                 if not (self.ssh_process and self.ssh_process.poll() is None):
                     logger.info("Auto-restarting SSH tunnel...")
                     self.start_tunnel()
@@ -469,5 +572,4 @@ class HomelabApp(tk.Tk):
 
 if __name__ == "__main__":
     app = HomelabApp()
-    app.protocol("WM_DELETE_WINDOW", lambda: (setattr(app, 'running', False), app.stop_tunnel(), app.destroy()))
     app.mainloop()

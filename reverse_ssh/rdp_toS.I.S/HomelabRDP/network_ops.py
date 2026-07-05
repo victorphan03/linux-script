@@ -123,8 +123,13 @@ def resolve_ip(hostname):
         return None
 
 def kill_orphaned_ssh():
-    # Kills any ssh.exe process that has our target host in its command line using wmic
-    script = "Get-CimInstance Win32_Process -Filter \\\"Name='ssh.exe'\\\" | Where-Object { $_.CommandLine -match 'home.victorphan.net' } | Invoke-CimMethod -MethodName Terminate | Out-Null"
+    # Kills any ssh.exe process that has our target host or local stunnel in its command line using wmic
+    script = "Get-CimInstance Win32_Process -Filter \"Name='ssh.exe'\" | Where-Object { $_.CommandLine -match 'home.victorphan.net' -or $_.CommandLine -match '127.0.0.1' } | Invoke-CimMethod -MethodName Terminate | Out-Null"
+    run_ps(script)
+
+def kill_orphaned_stunnel():
+    # Kills any stunnel.exe process that has our stunnel.conf in its command line
+    script = "Get-CimInstance Win32_Process -Filter \"Name='stunnel.exe'\" | Where-Object { $_.CommandLine -match 'stunnel.conf' } | Invoke-CimMethod -MethodName Terminate | Out-Null"
     run_ps(script)
 
 def kill_remote_port(ssh_exe, host, port, user, key_path=None, ssh_port=22, bind_ip=None):

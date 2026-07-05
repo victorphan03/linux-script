@@ -13,6 +13,10 @@
   "WiFiGateway": "10.0.0.1",
   "DnsCheckIntervalMinutes": 1,
   "AutoStartTunnel": true,
-  "AutoConnectWiFi": true,
-  "WiFiProfile": "Wifi-Khach"
+  "AutoConnectWiFi": false,
+  "WiFiProfile": "Wifi-Khach",
+  "UseStunnel": true,
+  "StunnelLocalPort": 2222,
+  "UseFirewall": false,
+  "UseSSH": true
 }
