@@ -76,6 +76,16 @@ client = yes
 accept = 127.0.0.1:2222
 connect = $SERVER_A_IP:$STUNNEL_PORT
 EOF
+    # Đảm bảo dịch vụ stunnel4 được bật trên Debian/Ubuntu
+    if [ -f /etc/default/stunnel4 ]; then
+        sed -i 's/ENABLED=0/ENABLED=1/' /etc/default/stunnel4
+    else
+        echo "ENABLED=1" > /etc/default/stunnel4
+    fi
+
+    # Diệt tận gốc các tiến trình stunnel cũ bị kẹt
+    killall -9 stunnel4 2>/dev/null
+    
     systemctl enable stunnel4.service
     systemctl restart stunnel4.service
     sleep 2
