@@ -140,6 +140,11 @@ User=root
 WantedBy=multi-user.target
 ENDFILE
     systemctl daemon-reload
+    
+    # Diệt tận gốc các tiến trình stunnel cũ bị kẹt trước khi restart
+    killall -9 stunnel4 2>/dev/null
+    systemctl restart stunnel4.service 2>/dev/null
+    
     systemctl restart reverse-ssh.service
     echo "[V] Đã khởi động lại dịch vụ với cấu hình mới!"
 }
