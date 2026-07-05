@@ -13,6 +13,13 @@ ENV_FILE="/etc/default/reverse_ssh"
 SERVICE_PATH="/etc/systemd/system/reverse-ssh.service"
 PORT_CONF="/etc/reverse_ssh_ports.conf"
 
+# Kiểm tra và cài đặt dependencies
+if ! command -v stunnel4 &> /dev/null || ! command -v autossh &> /dev/null; then
+    echo "Đang cài đặt các gói cần thiết (stunnel4, autossh)..."
+    apt-get update
+    apt-get install -y stunnel4 autossh
+fi
+
 # Hàm khởi tạo mặc định nếu chưa cài đặt
 init_config() {
     echo "=== Lần đầu cấu hình Tunnel ==="
@@ -62,12 +69,14 @@ SSH_KEY_PATH=$KEY_FILE
 ENDFILE
     
     echo "Cấu hình Stunnel Client..."
+    mkdir -p /etc/stunnel
     cat > /etc/stunnel/stunnel.conf <<EOF
 client = yes
 [ssh-reverse]
 accept = 127.0.0.1:2222
 connect = $SERVER_A_IP:$STUNNEL_PORT
 EOF
+    systemctl enable stunnel4.service
     systemctl restart stunnel4.service
     sleep 2
     
