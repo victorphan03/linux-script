@@ -159,8 +159,9 @@ while true; do
     echo "2. Xóa Port"
     echo "3. Áp dụng & Khởi động lại dịch vụ"
     echo "4. Reset cấu hình gốc (Xóa IP/Máy chủ để làm lại)"
-    echo "5. Thoát"
-    read -p "Chọn chức năng [1-5]: " choice
+    echo "5. Backup / Restore cấu hình"
+    echo "6. Thoát"
+    read -p "Chọn chức năng [1-6]: " choice
     
     case $choice in
         1)
@@ -190,6 +191,24 @@ while true; do
             init_config
             ;;
         5)
+            echo "1. Backup cấu hình hiện tại (Lưu ra file reverse_ssh_backup.tar.gz)"
+            echo "2. Restore cấu hình từ file backup"
+            read -p "Chọn [1-2]: " br_choice
+            if [ "$br_choice" == "1" ]; then
+                tar -czf reverse_ssh_backup.tar.gz -P /etc/default/reverse_ssh /etc/reverse_ssh_ports.conf /etc/stunnel/stunnel.conf 2>/dev/null
+                echo "[V] Đã backup thành công ra file reverse_ssh_backup.tar.gz tại thư mục hiện tại!"
+            elif [ "$br_choice" == "2" ]; then
+                if [ -f "reverse_ssh_backup.tar.gz" ]; then
+                    tar -xzf reverse_ssh_backup.tar.gz -P 2>/dev/null
+                    systemctl restart stunnel4.service 2>/dev/null
+                    apply_service
+                    echo "[V] Đã restore thành công!"
+                else
+                    echo "[X] Không tìm thấy file reverse_ssh_backup.tar.gz"
+                fi
+            fi
+            ;;
+        6)
             echo "Thoát chương trình."
             exit 0
             ;;
