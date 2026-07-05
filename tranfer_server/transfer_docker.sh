@@ -44,7 +44,7 @@ if [ "$#" -eq 0 ]; then
     
     # Helper function to select local path
     select_local_path() {
-        echo "Danh sách các file/thư mục tại $SCRIPT_DIR:"
+        echo "Danh sách các file/thư mục tại $SCRIPT_DIR:" >&2
         ITEMS=()
         for item in "$SCRIPT_DIR"/*; do
             [ -e "$item" ] || continue
@@ -60,12 +60,12 @@ if [ "$#" -eq 0 ]; then
             else
                 TYPE="[File]   "
             fi
-            echo "$((i+1)). $TYPE ${ITEMS[$i]}"
+            echo "$((i+1)). $TYPE ${ITEMS[$i]}" >&2
         done
         
-        echo ""
-        # The output of the read prompt will be displayed, but the function's stdout is captured by the caller.
-        # We need to read directly from /dev/tty so the prompt shows up in the terminal.
+        echo "" >&2
+        # The output of the read prompt will be displayed on stderr.
+        # We need to read directly from /dev/tty so it takes terminal input.
         read -p "Chọn số tương ứng (hoặc gõ đường dẫn tuyệt đối, ví dụ /opt/docker): " INPUT_PATH < /dev/tty
         
         if [[ "$INPUT_PATH" =~ ^[0-9]+$ ]] && [ "$INPUT_PATH" -ge 1 ] && [ "$INPUT_PATH" -le "${#ITEMS[@]}" ]; then
@@ -77,8 +77,7 @@ if [ "$#" -eq 0 ]; then
     
     if [ "$DIR_CHOICE" == "1" ]; then
         echo "--- CHỌN DỮ LIỆU NGUỒN (TRÊN MÁY NÀY) ---"
-        # We redirect stderr to /dev/tty so prompts are visible, but stdout goes to variable
-        SOURCE=$(select_local_path > /dev/tty)
+        SOURCE=$(select_local_path)
         echo ""
         read -p "Nhập máy chủ và thư mục ĐÍCH (VD: user@192.168.1.100:/opt/): " DEST
     elif [ "$DIR_CHOICE" == "2" ]; then
@@ -86,7 +85,7 @@ if [ "$#" -eq 0 ]; then
         read -p "Nhập máy chủ và thư mục NGUỒN (VD: user@192.168.1.100:/opt/docker): " SOURCE
         echo ""
         echo "--- CHỌN THƯ MỤC LƯU TRỮ (TRÊN MÁY NÀY) ---"
-        DEST=$(select_local_path > /dev/tty)
+        DEST=$(select_local_path)
     else
         echo "Lựa chọn không hợp lệ."
         exit 1
