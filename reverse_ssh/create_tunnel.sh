@@ -159,9 +159,10 @@ while true; do
     echo "2. Xóa Port"
     echo "3. Áp dụng & Khởi động lại dịch vụ"
     echo "4. Reset cấu hình gốc (Xóa IP/Máy chủ để làm lại)"
-    echo "5. Backup / Restore cấu hình"
-    echo "6. Thoát"
-    read -p "Chọn chức năng [1-6]: " choice
+    echo "5. Kiểm tra trạng thái dịch vụ (Status)"
+    echo "6. Backup / Restore cấu hình"
+    echo "7. Thoát"
+    read -p "Chọn chức năng [1-7]: " choice
     
     case $choice in
         1)
@@ -191,6 +192,16 @@ while true; do
             init_config
             ;;
         5)
+            echo "=== TRẠNG THÁI STUNNEL ==="
+            systemctl status stunnel4.service --no-pager | grep -E "Active:|Process:"
+            echo ""
+            echo "=== TRẠNG THÁI REVERSE SSH ==="
+            systemctl status reverse-ssh.service --no-pager | grep -E "Active:|Process:"
+            echo ""
+            echo "=== TIẾN TRÌNH ĐANG CHẠY ==="
+            ps aux | grep -E 'stunnel|autossh|ssh -N' | grep -v grep
+            ;;
+        6)
             echo "1. Backup cấu hình hiện tại (Lưu theo thời gian)"
             echo "2. Restore cấu hình từ danh sách backup"
             read -p "Chọn [1-2]: " br_choice
@@ -220,7 +231,7 @@ while true; do
                 fi
             fi
             ;;
-        6)
+        7)
             echo "Thoát chương trình."
             exit 0
             ;;
