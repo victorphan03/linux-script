@@ -61,7 +61,17 @@ SERVER_A_USER=$SERVER_A_USER
 SSH_KEY_PATH=$KEY_FILE
 ENDFILE
     
-    echo "Đang copy key sang Máy A..."
+    echo "Cấu hình Stunnel Client..."
+    cat > /etc/stunnel/stunnel.conf <<EOF
+client = yes
+[ssh-reverse]
+accept = 127.0.0.1:2222
+connect = $SERVER_A_IP:$STUNNEL_PORT
+EOF
+    systemctl restart stunnel4.service
+    sleep 2
+    
+    echo "Đang copy key sang Máy A qua Stunnel (Port 2222)..."
     ssh-copy-id -p 2222 -i "$KEY_FILE" -o StrictHostKeyChecking=no "$SERVER_A_USER"@127.0.0.1
     
     touch "$PORT_CONF"
