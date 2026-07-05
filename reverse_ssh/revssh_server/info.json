@@ -1,0 +1,10 @@
+{
+  "title": "Reverse SSH Server",
+  "name": "revssh_server",
+  "versions": "1.0",
+  "type": "System Tool",
+  "ps": "Setup Stunnel Server to receive HTTPS-encapsulated reverse SSH.",
+  "author": "Victor Phan",
+  "home": "https://www.aapanel.com",
+  "date": "2023-01-01"
+}

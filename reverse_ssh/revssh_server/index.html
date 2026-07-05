@@ -1,0 +1,105 @@
+<style>
+.revssh-box { padding: 20px; }
+.revssh-box .line { margin-bottom: 20px; display: flex; align-items: center; }
+.revssh-box label { display: inline-block; width: 150px; font-weight: bold; margin-bottom: 0; }
+.revssh-status { font-weight: bold; font-size: 15px; margin-right: 15px; }
+.btn-control { margin-right: 5px; }
+</style>
+<div class="revssh-box">
+    <div class="line">
+        <label>Service Status:</label>
+        <span id="stunnel_status" class="revssh-status">Checking...</span>
+    </div>
+    <div class="line" style="background: #f5f5f5; padding: 10px; border-radius: 4px; font-family: monospace; font-size: 12px; margin-bottom: 20px;">
+        <p style="margin: 0 0 5px 0;"><strong>Manual Control via Terminal:</strong></p>
+        <div style="margin-bottom: 3px;">Start: <span style="background: #e8e8e8; padding: 2px 5px; border-radius: 3px; color: #d14;">sudo systemctl start stunnel4</span></div>
+        <div>Stop: <span style="background: #e8e8e8; padding: 2px 5px; border-radius: 3px; color: #d14;">sudo systemctl stop stunnel4 && sudo killall -9 stunnel4 stunnel 2>/dev/null</span></div>
+    </div>
+    <div class="line">
+        <label>Listen Port (Stunnel):</label>
+        <input type="text" class="bt-input-text mr5" id="listen_port" value="" style="width:100px" />
+        <span class="info" style="margin-left: 10px;">(Port to receive HTTPS traffic from Machine B)</span>
+    </div>
+    <div class="line" style="margin-top: 10px;">
+        <label>Local SSH Port:</label>
+        <input type="text" class="bt-input-text mr5" id="local_ssh_port" value="22" style="width:100px" />
+        <span class="info" style="margin-left: 10px;">(Your aaPanel SSH Port. Default is 22)</span>
+    </div>
+    <div class="line" style="margin-top: 15px;">
+        <label></label>
+        <button class="btn btn-success btn-sm" onclick="SaveConfig()">Save & Restart</button>
+    </div>
+    <hr>
+    <div class="line" style="display:block;">
+        <div style="margin-bottom: 5px;">
+            <label style="width: auto;">Service Logs (Last 50 lines):</label>
+            <button class="btn btn-default btn-xs" onclick="GetLogs()" style="margin-left: 10px;">Refresh Logs</button>
+        </div>
+        <textarea id="service_logs" class="bt-input-text" style="width: 100%; height: 200px; font-family: monospace; font-size: 12px; background: #f9f9f9; resize: vertical;" readonly>Loading logs...</textarea>
+    </div>
+</div>
+
+<script>
+    function GetConfig() {
+        var loadT = layer.msg('Loading...', {icon:16,time:0,shade: [0.3, '#000']});
+        $.post('/plugin?action=a&name=revssh_server&s=GetConfig', {}, function(rdata){
+            layer.close(loadT);
+            if(rdata.status === true) {
+                $('#listen_port').val(rdata.msg.port);
+                $('#local_ssh_port').val(rdata.msg.ssh_port);
+                $('#stunnel_status').text(rdata.msg.status);
+                if (rdata.msg.status == 'Running') {
+                    $('#stunnel_status').css('color', '#20a53a');
+                } else {
+                    $('#stunnel_status').css('color', 'red');
+                }
+            } else {
+                layer.msg(rdata.msg, {icon:2});
+            }
+        },'json');
+    }
+
+    function SaveConfig() {
+        var port = $('#listen_port').val();
+        var ssh_port = $('#local_ssh_port').val();
+        if(!port || !ssh_port) {
+            layer.msg('Ports cannot be empty', {icon:2});
+            return;
+        }
+        var loadT = layer.msg('Saving...', {icon:16,time:0,shade: [0.3, '#000']});
+        $.post('/plugin?action=a&name=revssh_server&s=SetConfig', {port: port, ssh_port: ssh_port}, function(rdata){
+            layer.close(loadT);
+            layer.msg(rdata.msg, {icon:rdata.status?1:2});
+            if(rdata.status) {
+                GetConfig();
+            }
+        },'json');
+    }
+    
+    function ControlService(action) {
+        var loadT = layer.msg('Executing...', {icon:16,time:0,shade: [0.3, '#000']});
+        $.post('/plugin?action=a&name=revssh_server&s=ControlService', {action: action}, function(rdata){
+            layer.close(loadT);
+            layer.msg(rdata.msg, {icon:rdata.status?1:2});
+            GetConfig();
+        },'json');
+    }
+
+    function GetLogs() {
+        $('#service_logs').val("Loading logs...");
+        $.post('/plugin?action=a&name=revssh_server&s=GetLogs', {}, function(rdata){
+            if(rdata.status === true) {
+                $('#service_logs').val(rdata.msg);
+                // Scroll to bottom
+                var textarea = document.getElementById('service_logs');
+                textarea.scrollTop = textarea.scrollHeight;
+            } else {
+                $('#service_logs').val("Error loading logs: " + rdata.msg);
+            }
+        },'json');
+    }
+
+    // Initialize data on load
+    GetConfig();
+    GetLogs();
+</script>
