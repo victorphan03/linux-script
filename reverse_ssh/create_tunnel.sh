@@ -191,20 +191,32 @@ while true; do
             init_config
             ;;
         5)
-            echo "1. Backup cấu hình hiện tại (Lưu ra file reverse_ssh_backup.tar.gz)"
-            echo "2. Restore cấu hình từ file backup"
+            echo "1. Backup cấu hình hiện tại (Lưu theo thời gian)"
+            echo "2. Restore cấu hình từ danh sách backup"
             read -p "Chọn [1-2]: " br_choice
             if [ "$br_choice" == "1" ]; then
-                tar -czf reverse_ssh_backup.tar.gz -P /etc/default/reverse_ssh /etc/reverse_ssh_ports.conf /etc/stunnel/stunnel.conf 2>/dev/null
-                echo "[V] Đã backup thành công ra file reverse_ssh_backup.tar.gz tại thư mục hiện tại!"
+                TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+                BACKUP_FILE="reverse_ssh_backup_$TIMESTAMP.tar.gz"
+                tar -czf "$BACKUP_FILE" -P /etc/default/reverse_ssh /etc/reverse_ssh_ports.conf /etc/stunnel/stunnel.conf 2>/dev/null
+                echo "[V] Đã backup thành công ra file $BACKUP_FILE tại thư mục hiện tại!"
             elif [ "$br_choice" == "2" ]; then
-                if [ -f "reverse_ssh_backup.tar.gz" ]; then
-                    tar -xzf reverse_ssh_backup.tar.gz -P 2>/dev/null
-                    systemctl restart stunnel4.service 2>/dev/null
-                    apply_service
-                    echo "[V] Đã restore thành công!"
+                BACKUPS=(reverse_ssh_backup_*.tar.gz)
+                if [ -e "${BACKUPS[0]}" ]; then
+                    echo "Các bản backup hiện có:"
+                    select b_file in "${BACKUPS[@]}"; do
+                        if [ -n "$b_file" ]; then
+                            echo "Đang restore từ $b_file..."
+                            tar -xzf "$b_file" -P 2>/dev/null
+                            systemctl restart stunnel4.service 2>/dev/null
+                            apply_service
+                            echo "[V] Đã restore thành công từ $b_file!"
+                            break
+                        else
+                            echo "Lựa chọn không hợp lệ."
+                        fi
+                    done
                 else
-                    echo "[X] Không tìm thấy file reverse_ssh_backup.tar.gz"
+                    echo "[X] Không tìm thấy bản backup nào (reverse_ssh_backup_*.tar.gz)"
                 fi
             fi
             ;;
