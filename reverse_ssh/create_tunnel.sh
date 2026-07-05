@@ -104,9 +104,14 @@ list_ports() {
         return
     fi
     local i=1
-    while IFS=: read -r rport lport; do
+    while IFS=: read -r col1 col2 col3; do
+        if [ -n "$col3" ]; then
+            rport=$col1; lip=$col2; lport=$col3
+        else
+            rport=$col1; lip="127.0.0.1"; lport=$col2
+        fi
         if [ -n "$rport" ] && [ -n "$lport" ]; then
-            echo "$i) Máy A (Port $rport) ---> Máy B (Port $lport)"
+            echo "$i) Máy A (Port $rport) ---> IP $lip (Port $lport)"
             ((i++))
         fi
     done < "$PORT_CONF"
@@ -117,9 +122,14 @@ apply_service() {
     if [ ! -f "$ENV_FILE" ]; then return; fi
     source "$ENV_FILE"
     PORT_ARGS=""
-    while IFS=: read -r rport lport; do
+    while IFS=: read -r col1 col2 col3; do
+        if [ -n "$col3" ]; then
+            rport=$col1; lip=$col2; lport=$col3
+        else
+            rport=$col1; lip="127.0.0.1"; lport=$col2
+        fi
         if [ -n "$rport" ] && [ -n "$lport" ]; then
-            PORT_ARGS="$PORT_ARGS -R $rport:127.0.0.1:$lport"
+            PORT_ARGS="$PORT_ARGS -R $rport:$lip:$lport"
         fi
     done < "$PORT_CONF"
     
@@ -171,10 +181,12 @@ while true; do
     
     case $choice in
         1)
+            read -p "Nhập IP nội bộ của dịch vụ (Bỏ trống = 127.0.0.1): " lip
+            lip=${lip:-127.0.0.1}
             read -p "Nhập Port dịch vụ nội bộ Máy B (VD: 80): " lport
             read -p "Nhập Port remote trên Máy A (VD: 8080): " rport
             if [ -n "$lport" ] && [ -n "$rport" ]; then
-                echo "$rport:$lport" >> "$PORT_CONF"
+                echo "$rport:$lip:$lport" >> "$PORT_CONF"
                 echo "Đã thêm thành công! Hãy chọn 3 để áp dụng."
             fi
             ;;
