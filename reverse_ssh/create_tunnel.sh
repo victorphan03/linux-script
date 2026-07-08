@@ -155,8 +155,9 @@ ENDFILE
     killall -9 stunnel4 2>/dev/null
     systemctl restart stunnel4.service 2>/dev/null
     
+    systemctl enable reverse-ssh.service
     systemctl restart reverse-ssh.service
-    echo "[V] Đã khởi động lại dịch vụ với cấu hình mới!"
+    echo "[V] Đã khởi động lại dịch vụ với cấu hình mới và cài đặt tự khởi động (enable)!"
 }
 
 if [ ! -f "$ENV_FILE" ]; then
