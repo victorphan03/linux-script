@@ -53,7 +53,7 @@ async def proxy_ws_to_tcp(ws, reader, writer):
 
     await asyncio.gather(ws_to_tcp(), tcp_to_ws())
 
-async def handle_ws_client(websocket, path):
+async def handle_ws_client(websocket, *args, **kwargs):
     """Handle incoming WS connection from the remote machine (Client)."""
     client_addr = websocket.remote_address
     print(f"[+] WS Client connected from {client_addr}. Adding to pool.")
