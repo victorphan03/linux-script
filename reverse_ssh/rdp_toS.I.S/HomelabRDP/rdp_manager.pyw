@@ -17,34 +17,6 @@ def my_excepthook(t, v, tb):
         traceback.print_exception(t, v, tb, file=f)
 sys.excepthook = my_excepthook
 
-try:
-    import pystray
-    from PIL import Image, ImageDraw
-except ImportError:
-    pystray = None
-
-# --- ADMIN CHECK ---
-def is_admin():
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
-
-if not is_admin():
-    script = os.path.abspath(sys.argv[0])
-    drive, tail = os.path.splitdrive(script)
-    if drive:
-        try:
-            out = subprocess.check_output(
-                ['powershell', '-NoProfile', '-Command', f"(Get-WmiObject Win32_LogicalDisk -Filter 'DeviceID=''{drive}''').ProviderName"],
-                creationflags=0x08000000, text=True
-            ).strip()
-            if out:
-                script = out + tail
-        except Exception:
-            pass
-    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
-    sys.exit()
 
 # --- CONFIG ---
 CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config_ssh.json")
@@ -93,19 +65,15 @@ class HomelabApp(tk.Tk):
         self.config = load_config()
         self.ssh_process = None
         self.running = True
+        self.fail_count = 0
         
         self.build_ui()
         self.process_queue()
         
         self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
-        self.root.bind('<Unmap>', self.on_unmap)
-        self.icon = None
-        
-        if pystray is None:
-            self.root.after(500, lambda: self.show_dependency_warning(is_closing=False))
         
         threading.Thread(target=self.background_worker, daemon=True).start()
-        logger.info("Application started. Running as Administrator.")
+        logger.info("Application started.")
 
     def build_ui(self):
         notebook = ttk.Notebook(self)
@@ -191,67 +159,16 @@ class HomelabApp(tk.Tk):
             self.lbl_ssh.config(text=f"SSH Tunnel: {'Running' if alive else 'Stopped'}", foreground="green" if alive else "red")
         self.after(0, _update)
 
-    def on_unmap(self, event):
-        if event.widget == self.root and self.root.state() == 'iconic':
-            self.hide_window()
-
-    def show_dependency_warning(self, is_closing=False):
-        err_win = tk.Toplevel(self.root)
-        err_win.title("Thiếu thư viện (Missing Dependency)")
-        err_win.geometry("400x220")
-        err_win.resizable(False, False)
-        err_win.grab_set()
-        
-        ttk.Label(err_win, text="Phần mềm cần 2 thư viện 'pystray' và 'Pillow'\nđể thu nhỏ xuống góc màn hình.", justify="center").pack(pady=15)
-        ttk.Label(err_win, text="Copy lệnh dưới đây và chạy trong CMD:").pack(pady=5)
-        
-        cmd_entry = ttk.Entry(err_win, justify="center", font=("Consolas", 10))
-        cmd_entry.insert(0, "pip install pystray pillow")
-        cmd_entry.config(state="readonly")
-        cmd_entry.pack(fill="x", padx=40, pady=5)
-        
-        if is_closing:
-            ttk.Label(err_win, text="Phần mềm sẽ tắt để tránh lỗi chạy ngầm.").pack(pady=10)
-            ttk.Button(err_win, text="Đã hiểu (Thoát)", command=self.root.destroy).pack(pady=5)
-        else:
-            ttk.Label(err_win, text="Vui lòng cài đặt để dùng tính năng chạy ngầm.").pack(pady=10)
-            ttk.Button(err_win, text="Đã hiểu", command=err_win.destroy).pack(pady=5)
-
     def hide_window(self):
-        if pystray is None:
-            self.show_dependency_warning(is_closing=True)
-            return
-        self.root.withdraw()
-        if self.icon is None:
-            self.show_tray_icon()
-
-    def show_window(self, icon=None, item=None):
-        if self.icon:
-            self.icon.stop()
-            self.icon = None
-        self.root.after(0, self.root.deiconify)
-        self.root.after(0, lambda: self.root.state('normal'))
+        """Thu nhỏ xuống Taskbar (không tắt app)"""
+        self.root.iconify()
+        logger.info("Window minimized to taskbar.")
 
     def exit_app(self, icon=None, item=None):
-        if self.icon:
-            self.icon.stop()
         self.running = False
         self.stop_tunnel()
-        self.root.after(0, self.root.destroy)
+        self.root.destroy()
 
-    def show_tray_icon(self):
-        try:
-            image = Image.new('RGB', (64, 64), color=(30, 30, 30))
-            draw = ImageDraw.Draw(image)
-            draw.ellipse((16, 16, 48, 48), fill=(0, 200, 0))
-            menu = pystray.Menu(
-                pystray.MenuItem("Show Manager", self.show_window, default=True),
-                pystray.MenuItem("Exit Completely", self.exit_app)
-            )
-            self.icon = pystray.Icon("ReverseSSH", image, "Reverse SSH Manager", menu)
-            threading.Thread(target=self.icon.run, daemon=True).start()
-        except Exception as e:
-            logger.error(f"Tray icon error: {e}")
 
     def save_ssh_config(self):
         self.config.update({
@@ -283,8 +200,12 @@ class HomelabApp(tk.Tk):
         target_port = self.config.get("SshPort", 22)
         
         cmd = [
-            self.config.get("SshExePath", "ssh.exe"), "-N",
-            "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "StrictHostKeyChecking=accept-new"
+            self.config.get("SshExePath", "ssh.exe"),
+            "-N",
+            "-o", "ServerAliveInterval=15",
+            "-o", "ServerAliveCountMax=3",
+            "-o", "StrictHostKeyChecking=accept-new",
+            "-o", "BatchMode=yes"
         ]
         if self.config.get("SshKeyPath"):
             cmd.extend(["-i", self.config["SshKeyPath"]])
@@ -295,20 +216,17 @@ class HomelabApp(tk.Tk):
         
         try:
             logger.info(f"Starting SSH: {' '.join(cmd)}")
-            self.ssh_process = subprocess.Popen(cmd, creationflags=0x08000000, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            # Gộp cả stdout và stderr lại để không bỏ sót bất kỳ dòng báo lỗi nào
+            self.ssh_process = subprocess.Popen(cmd, creationflags=0x08000000, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             logger.info(f"SSH Tunnel started (PID: {self.ssh_process.pid})")
             
-            def read_ssh_stderr(proc):
-                while proc.poll() is None:
-                    line = proc.stderr.readline()
-                    if line:
-                        msg = line.decode('utf-8', errors='replace').strip()
-                        if msg:
-                            logger.info(f"[SSH] {msg}")
-                    else:
-                        break
+            def read_ssh_logs(proc):
+                for line in iter(proc.stdout.readline, b''):
+                    msg = line.decode('utf-8', errors='replace').strip()
+                    if msg:
+                        logger.info(f"[SSH] {msg}")
             
-            threading.Thread(target=read_ssh_stderr, args=(self.ssh_process,), daemon=True).start()
+            threading.Thread(target=read_ssh_logs, args=(self.ssh_process,), daemon=True).start()
             
         except Exception as e:
             logger.error(f"Failed to start SSH: {e}")
@@ -355,9 +273,17 @@ class HomelabApp(tk.Tk):
         while self.running:
             if self.config.get("AutoStartTunnel", True):
                 if not (self.ssh_process and self.ssh_process.poll() is None):
-                    logger.info("Auto-restarting SSH tunnel...")
+                    self.fail_count += 1
+                    # Backoff: 5s, 10s, 20s, 30s, 30s, 30s...
+                    wait = min(5 * (2 ** (self.fail_count - 1)), 30)
+                    logger.info(f"Auto-restarting SSH tunnel... (attempt {self.fail_count}, next retry in {wait}s)")
                     self.start_tunnel()
-            time.sleep(5)
+                    time.sleep(wait)
+                else:
+                    self.fail_count = 0  # Reset on success
+                    time.sleep(5)
+            else:
+                time.sleep(5)
 
 if __name__ == "__main__":
     app = HomelabApp()

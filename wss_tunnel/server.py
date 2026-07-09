@@ -98,16 +98,11 @@ async def main():
     CERT_FILE = config.get('cert_file', 'cert.pem')
     KEY_FILE = config.get('key_file', 'key.pem')
 
-    if not os.path.exists(CERT_FILE) or not os.path.exists(KEY_FILE):
-        print(f"[!] SSL Certificates not found: {CERT_FILE} or {KEY_FILE}")
-        sys.exit(1)
+    # 1. Bỏ qua SSL Context (NGINX sẽ lo phần này)
+    ssl_context = None
 
-    # 1. SSL Context
-    ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-    ssl_context.load_cert_chain(CERT_FILE, keyfile=KEY_FILE)
-
-    # 2. Start WebSocket Server (Listens for Company Client)
-    print(f"[*] Starting WSS Server on {LISTEN_HOST}:{LISTEN_PORT}...")
+    # 2. Start WebSocket Server (Lắng nghe NGINX thay vì Client)
+    print(f"[*] Starting WS Server on {LISTEN_HOST}:{LISTEN_PORT}...")
     ws_server = await websockets.serve(
         handle_ws_client, LISTEN_HOST, LISTEN_PORT, ssl=ssl_context
     )
