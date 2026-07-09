@@ -1,0 +1,10 @@
+{
+  "HomelabHost": "localhost",
+  "SshPort": 2222,
+  "SshUser": "x79",
+  "SshKeyPath": "",
+  "RemoteRdpPort": 4007,
+  "LocalRdpPort": 3389,
+  "SshExePath": "ssh.exe",
+  "AutoStartTunnel": true
+}

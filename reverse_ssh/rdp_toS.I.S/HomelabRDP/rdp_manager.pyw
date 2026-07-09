@@ -4,24 +4,24 @@ import json
 import os
 import sys
 import traceback
-def my_excepthook(t, v, tb):
-    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crash.log")
-    with open(log_path, "w", encoding="utf-8") as f:
-        traceback.print_exception(t, v, tb, file=f)
-sys.excepthook = my_excepthook
 import ctypes
 import threading
 import subprocess
 import time
 import queue
 import logging
+
+def my_excepthook(t, v, tb):
+    log_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "crash.log")
+    with open(log_path, "w", encoding="utf-8") as f:
+        traceback.print_exception(t, v, tb, file=f)
+sys.excepthook = my_excepthook
+
 try:
     import pystray
     from PIL import Image, ImageDraw
 except ImportError:
     pystray = None
-
-import network_ops
 
 # --- ADMIN CHECK ---
 def is_admin():
@@ -30,17 +30,11 @@ def is_admin():
     except:
         return False
 
-with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace.log"), "a") as f:
-    f.write("App started. is_admin=" + str(is_admin()) + "\n")
-
 if not is_admin():
     script = os.path.abspath(sys.argv[0])
-    
-    # Resolve mapped network drives (like WSL's X: drive) to UNC path for elevated session
     drive, tail = os.path.splitdrive(script)
     if drive:
         try:
-            import subprocess
             out = subprocess.check_output(
                 ['powershell', '-NoProfile', '-Command', f"(Get-WmiObject Win32_LogicalDisk -Filter 'DeviceID=''{drive}''').ProviderName"],
                 creationflags=0x08000000, text=True
@@ -49,12 +43,11 @@ if not is_admin():
                 script = out + tail
         except Exception:
             pass
-            
-    ret = ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
+    ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, f'"{script}"', None, 1)
     sys.exit()
 
 # --- CONFIG ---
-CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config.json")
+CONFIG_FILE = os.path.join(os.path.dirname(__file__), "config_ssh.json")
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -65,13 +58,7 @@ def load_config():
     return {
         "HomelabHost": "home.victorphan.net", "SshPort": 22, "SshUser": "x79",
         "SshKeyPath": "", "RemoteRdpPort": 4005, "LocalRdpPort": 3389,
-        "SshExePath": "ssh.exe", "LanInterface": "Ethernet", "LanMetric": 10,
-        "WiFiInterface": "WiFi 2", "WiFiMetric": 500, "WiFiGateway": "10.0.0.1",
-        "DnsCheckIntervalMinutes": 10, "AutoStartTunnel": True,
-        "AutoConnectWiFi": False, "WiFiProfile": "",
-        "UseFirewall": True, "UseStunnel": True, "UseSSH": True,
-        "StunnelExePath": "C:\\Program Files (x86)\\stunnel\\bin\\stunnel.exe",
-        "StunnelRemotePort": 8443, "StunnelLocalPort": 2222
+        "SshExePath": "ssh.exe", "AutoStartTunnel": True
     }
 
 def save_config(config):
@@ -84,47 +71,40 @@ class QueueHandler(logging.Handler):
     def emit(self, record):
         log_queue.put(self.format(record))
 
-logger = logging.getLogger("HomelabRDP")
+logger = logging.getLogger("ReverseSSH")
 logger.setLevel(logging.INFO)
 formatter = logging.Formatter('[%(asctime)s] %(message)s', '%H:%M:%S')
 qh = QueueHandler()
 qh.setFormatter(formatter)
 logger.addHandler(qh)
-network_ops.logger = logger # Inject logger
 
 # --- APP ---
 class HomelabApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.root = self
-        self.title("HomelabRDP Manager (Pure Python)")
-        self.geometry("700x600")
+        self.title("Reverse SSH Manager")
+        self.geometry("600x450")
         self.resizable(False, False)
         
-        # Apply clean style
         style = ttk.Style(self)
         style.theme_use('clam')
         
         self.config = load_config()
-        self.interfaces = network_ops.get_network_interfaces()
-        
         self.ssh_process = None
-        self.stunnel_process = None
         self.running = True
-        self.last_ip = ""
         
         self.build_ui()
-        
-        # Start queue processor for safe GUI updates
         self.process_queue()
         
         self.root.protocol('WM_DELETE_WINDOW', self.hide_window)
         self.root.bind('<Unmap>', self.on_unmap)
         self.icon = None
         
-        # Start background thread (this thread will auto-start the tunnel if configured)
-        threading.Thread(target=self.background_worker, daemon=True).start()
+        if pystray is None:
+            self.root.after(500, lambda: self.show_dependency_warning(is_closing=False))
         
+        threading.Thread(target=self.background_worker, daemon=True).start()
         logger.info("Application started. Running as Administrator.")
 
     def build_ui(self):
@@ -132,121 +112,33 @@ class HomelabApp(tk.Tk):
         notebook.pack(fill='both', expand=True, padx=10, pady=10)
         
         self.tab_dash = ttk.Frame(notebook)
-        self.tab_net = ttk.Frame(notebook)
         self.tab_ssh = ttk.Frame(notebook)
         
         notebook.add(self.tab_dash, text="Dashboard")
-        notebook.add(self.tab_net, text="Network Config")
         notebook.add(self.tab_ssh, text="SSH Config")
         
         self._build_dashboard()
-        self._build_network()
         self._build_ssh()
 
     def _build_dashboard(self):
-        # Status Frame
-        status_frame = ttk.LabelFrame(self.tab_dash, text="Live Status")
+        status_frame = ttk.LabelFrame(self.tab_dash, text="Status")
         status_frame.pack(fill='x', padx=10, pady=5)
         
-        self.lbl_ssh = ttk.Label(status_frame, text="SSH Tunnel: Checking...", font=("Segoe UI", 10, "bold"))
-        self.lbl_ssh.grid(row=0, column=0, padx=10, pady=5, sticky='w')
+        self.lbl_ssh = ttk.Label(status_frame, text="SSH Tunnel: Stopped", font=("Segoe UI", 10, "bold"), foreground="red")
+        self.lbl_ssh.pack(pady=10)
         
-        self.lbl_fw = ttk.Label(status_frame, text="Firewall Rules: Checking...")
-        self.lbl_fw.grid(row=1, column=0, padx=10, pady=5, sticky='w')
-        
-        self.lbl_ip = ttk.Label(status_frame, text="Homelab IP: Resolving...", foreground="blue")
-        self.lbl_ip.grid(row=2, column=0, padx=10, pady=5, sticky='w')
-        
-        # Pipeline Frame
-        pipe_frame = ttk.LabelFrame(self.tab_dash, text="Connection Pipeline (Choose your steps)")
-        pipe_frame.pack(fill='x', padx=10, pady=5)
-        
-        def save_and_apply():
-            self.save_dash_config()
-            
-        self.var_use_fw = tk.BooleanVar(value=self.config.get("UseFirewall", True))
-        ttk.Checkbutton(pipe_frame, text="Step 1: Apply Firewall Rules (Prevent IP Leaks)", variable=self.var_use_fw, command=save_and_apply).grid(row=0, column=0, sticky='w', padx=10, pady=2)
-        
-        self.var_use_wifi = tk.BooleanVar(value=self.config.get("AutoConnectWiFi", False))
-        ttk.Checkbutton(pipe_frame, text="Step 2: Auto-connect to WiFi", variable=self.var_use_wifi, command=save_and_apply).grid(row=1, column=0, sticky='w', padx=10, pady=2)
-        
-        self.var_stunnel = tk.BooleanVar(value=self.config.get("UseStunnel", True))
-        ttk.Checkbutton(pipe_frame, text="Step 3: Route via Stunnel (Local Proxy)", variable=self.var_stunnel, command=save_and_apply).grid(row=2, column=0, sticky='w', padx=10, pady=2)
-        
-        self.var_use_ssh = tk.BooleanVar(value=self.config.get("UseSSH", True))
-        ttk.Checkbutton(pipe_frame, text="Step 4: Launch Reverse SSH Tunnel", variable=self.var_use_ssh, command=save_and_apply).grid(row=3, column=0, sticky='w', padx=10, pady=2)
-        
-        self.var_auto = tk.BooleanVar(value=self.config.get("AutoStartTunnel", True))
-        ttk.Checkbutton(pipe_frame, text="Auto-start pipeline on launch", variable=self.var_auto, command=save_and_apply).grid(row=4, column=0, sticky='w', padx=10, pady=5)
-        
-        # Controls Frame
         ctrl_frame = ttk.Frame(self.tab_dash)
         ctrl_frame.pack(fill='x', padx=10, pady=5)
         
-        ttk.Button(ctrl_frame, text="Start Pipeline", command=lambda: threading.Thread(target=self.start_tunnel, daemon=True).start()).grid(row=0, column=0, padx=5, pady=5)
-        ttk.Button(ctrl_frame, text="Stop All", command=self.stop_tunnel).grid(row=0, column=1, padx=5, pady=5)
-        ttk.Button(ctrl_frame, text="Apply Network Rules", command=self.apply_network).grid(row=1, column=0, padx=5, pady=5)
-        ttk.Button(ctrl_frame, text="Remove Network Rules", command=self.remove_network).grid(row=1, column=1, padx=5, pady=5)
+        ttk.Button(ctrl_frame, text="Start Reverse SSH", command=lambda: threading.Thread(target=self.start_tunnel, daemon=True).start()).pack(side='left', padx=5)
+        ttk.Button(ctrl_frame, text="Stop", command=self.stop_tunnel).pack(side='left', padx=5)
+        ttk.Button(ctrl_frame, text="Exit App completely", command=self.exit_app).pack(side='right', padx=5)
         
-        ttk.Button(ctrl_frame, text="Exit App completely", command=self.exit_app).grid(row=1, column=2, padx=5, pady=5)
-        
-        # Log Box
-        log_frame = ttk.LabelFrame(self.tab_dash, text="Service Logs")
+        log_frame = ttk.LabelFrame(self.tab_dash, text="Logs")
         log_frame.pack(fill='both', expand=True, padx=10, pady=5)
         
         self.log_text = tk.Text(log_frame, state='disabled', bg="black", fg="lightgray", font=("Consolas", 9))
         self.log_text.pack(fill='both', expand=True, padx=5, pady=5)
-
-    def _build_network(self):
-        f = ttk.Frame(self.tab_net, padding=10)
-        f.pack(fill='both', expand=True)
-        
-        ttk.Label(f, text="LAN Interface:").grid(row=0, column=0, sticky='w', pady=5)
-        self.var_lan = tk.StringVar(value=self.config.get("LanInterface"))
-        ttk.Combobox(f, textvariable=self.var_lan, values=self.interfaces).grid(row=0, column=1, pady=5, sticky='ew')
-        
-        ttk.Label(f, text="LAN Metric:").grid(row=1, column=0, sticky='w', pady=5)
-        self.var_lan_m = tk.StringVar(value=str(self.config.get("LanMetric")))
-        ttk.Entry(f, textvariable=self.var_lan_m).grid(row=1, column=1, pady=5, sticky='ew')
-        
-        ttk.Label(f, text="WiFi Interface:").grid(row=2, column=0, sticky='w', pady=5)
-        self.var_wifi = tk.StringVar(value=self.config.get("WiFiInterface"))
-        ttk.Combobox(f, textvariable=self.var_wifi, values=self.interfaces).grid(row=2, column=1, pady=5, sticky='ew')
-        
-        ttk.Label(f, text="WiFi Metric:").grid(row=3, column=0, sticky='w', pady=5)
-        self.var_wifi_m = tk.StringVar(value=str(self.config.get("WiFiMetric")))
-        ttk.Entry(f, textvariable=self.var_wifi_m).grid(row=3, column=1, pady=5, sticky='ew')
-        
-        ttk.Label(f, text="WiFi Gateway:").grid(row=4, column=0, sticky='w', pady=5)
-        self.var_gw = tk.StringVar(value=self.config.get("WiFiGateway"))
-        ttk.Entry(f, textvariable=self.var_gw).grid(row=4, column=1, pady=5, sticky='ew')
-        
-        ttk.Label(f, text="Target WiFi Profile:").grid(row=5, column=0, sticky='w', pady=5)
-        self.var_profile = tk.StringVar(value=self.config.get("WiFiProfile", ""))
-        ttk.Entry(f, textvariable=self.var_profile).grid(row=5, column=1, pady=5, sticky='ew')
-        
-        ttk.Button(f, text="Save Config", command=self.save_net_config).grid(row=6, column=1, pady=10, sticky='e')
-        
-        wifi_conn_frame = ttk.LabelFrame(f, text="Auto-Connect WiFi (4G Router)")
-        wifi_conn_frame.grid(row=7, column=0, columnspan=2, pady=10, sticky='ew')
-        
-        self.var_autoconn = tk.BooleanVar(value=self.config.get("AutoConnectWiFi", False))
-        ttk.Checkbutton(wifi_conn_frame, text="Connect to WiFi profile before starting tunnel", variable=self.var_autoconn).grid(row=0, column=0, columnspan=3, pady=5, sticky='w', padx=5)
-        
-        ttk.Label(wifi_conn_frame, text="WiFi Profile:").grid(row=1, column=0, sticky='w', pady=5, padx=5)
-        self.var_wifiprof = tk.StringVar(value=self.config.get("WiFiProfile", ""))
-        self.cbo_wifiprof = ttk.Combobox(wifi_conn_frame, textvariable=self.var_wifiprof)
-        self.cbo_wifiprof.grid(row=1, column=1, pady=5, sticky='ew', padx=5)
-        
-        def refresh_wifi_profiles():
-            self.cbo_wifiprof['values'] = network_ops.get_wifi_profiles()
-            
-        ttk.Button(wifi_conn_frame, text="Refresh List", command=refresh_wifi_profiles).grid(row=1, column=2, padx=5, pady=5)
-        refresh_wifi_profiles()
-        wifi_conn_frame.columnconfigure(1, weight=1)
-        
-        ttk.Button(f, text="Save & Apply Network", command=self.save_and_apply_network).grid(row=8, column=1, pady=10, sticky='e')
-        f.columnconfigure(1, weight=1)
 
     def _build_ssh(self):
         f = ttk.Frame(self.tab_ssh, padding=10)
@@ -255,34 +147,33 @@ class HomelabApp(tk.Tk):
         def add_row(lbl, key, row):
             ttk.Label(f, text=lbl).grid(row=row, column=0, sticky='w', pady=5)
             var = tk.StringVar(value=str(self.config.get(key, "")))
-            ttk.Entry(f, textvariable=var).grid(row=row, column=1, pady=5, sticky='ew')
+            ttk.Entry(f, textvariable=var, width=30).grid(row=row, column=1, pady=5, sticky='ew')
             return var
             
-        self.var_host = add_row("Host (DDNS):", "HomelabHost", 0)
+        self.var_host = add_row("Host / IP:", "HomelabHost", 0)
         self.var_user = add_row("SSH User:", "SshUser", 1)
         self.var_port = add_row("SSH Port:", "SshPort", 2)
         
         ttk.Label(f, text="SSH Key Path:").grid(row=3, column=0, sticky='w', pady=5)
         self.var_key = tk.StringVar(value=self.config.get("SshKeyPath", ""))
-        ttk.Entry(f, textvariable=self.var_key).grid(row=3, column=1, pady=5, sticky='ew')
+        ttk.Entry(f, textvariable=self.var_key, width=30).grid(row=3, column=1, pady=5, sticky='ew')
         ttk.Button(f, text="Browse...", command=lambda: self.var_key.set(filedialog.askopenfilename() or self.var_key.get())).grid(row=3, column=2, padx=5)
         
         self.var_rmport = add_row("Remote RDP Port:", "RemoteRdpPort", 4)
         self.var_lcport = add_row("Local RDP Port:", "LocalRdpPort", 5)
-        self.var_intv = add_row("DNS Check (min):", "DnsCheckIntervalMinutes", 6)
-        self.var_stloc = add_row("Stunnel Local Port:", "StunnelLocalPort", 7)
         
-        ttk.Button(f, text="Save Config", command=self.save_ssh_config).grid(row=8, column=1, pady=10, sticky='e')
+        self.var_auto = tk.BooleanVar(value=self.config.get("AutoStartTunnel", True))
+        ttk.Checkbutton(f, text="Auto-start tunnel on launch", variable=self.var_auto).grid(row=6, column=1, sticky='w', pady=5)
+
+        ttk.Button(f, text="Save Config", command=self.save_ssh_config).grid(row=7, column=1, pady=10, sticky='e')
         
-        # Auto Start Shortcut
-        lf = ttk.LabelFrame(f, text="Windows Startup (Run on Boot)")
-        lf.grid(row=9, column=0, columnspan=3, pady=10, sticky='ew')
-        ttk.Button(lf, text="Add to Startup", command=self.add_to_startup).pack(side='left', padx=10, pady=10)
+        lf = ttk.LabelFrame(f, text="Windows Startup")
+        lf.grid(row=8, column=0, columnspan=3, pady=10, sticky='ew')
+        ttk.Button(lf, text="Add to Startup (Task Scheduler)", command=self.add_to_startup).pack(side='left', padx=10, pady=10)
         ttk.Button(lf, text="Remove from Startup", command=self.remove_from_startup).pack(side='left', padx=10, pady=10)
         
         f.columnconfigure(1, weight=1)
 
-    # --- ACTIONS ---
     def process_queue(self):
         while not log_queue.empty():
             msg = log_queue.get_nowait()
@@ -295,7 +186,6 @@ class HomelabApp(tk.Tk):
         self.after(500, self.process_queue)
 
     def update_status(self):
-        # Check SSH status
         alive = self.ssh_process is not None and self.ssh_process.poll() is None
         def _update():
             self.lbl_ssh.config(text=f"SSH Tunnel: {'Running' if alive else 'Stopped'}", foreground="green" if alive else "red")
@@ -305,11 +195,32 @@ class HomelabApp(tk.Tk):
         if event.widget == self.root and self.root.state() == 'iconic':
             self.hide_window()
 
+    def show_dependency_warning(self, is_closing=False):
+        err_win = tk.Toplevel(self.root)
+        err_win.title("Thiếu thư viện (Missing Dependency)")
+        err_win.geometry("400x220")
+        err_win.resizable(False, False)
+        err_win.grab_set()
+        
+        ttk.Label(err_win, text="Phần mềm cần 2 thư viện 'pystray' và 'Pillow'\nđể thu nhỏ xuống góc màn hình.", justify="center").pack(pady=15)
+        ttk.Label(err_win, text="Copy lệnh dưới đây và chạy trong CMD:").pack(pady=5)
+        
+        cmd_entry = ttk.Entry(err_win, justify="center", font=("Consolas", 10))
+        cmd_entry.insert(0, "pip install pystray pillow")
+        cmd_entry.config(state="readonly")
+        cmd_entry.pack(fill="x", padx=40, pady=5)
+        
+        if is_closing:
+            ttk.Label(err_win, text="Phần mềm sẽ tắt để tránh lỗi chạy ngầm.").pack(pady=10)
+            ttk.Button(err_win, text="Đã hiểu (Thoát)", command=self.root.destroy).pack(pady=5)
+        else:
+            ttk.Label(err_win, text="Vui lòng cài đặt để dùng tính năng chạy ngầm.").pack(pady=10)
+            ttk.Button(err_win, text="Đã hiểu", command=err_win.destroy).pack(pady=5)
+
     def hide_window(self):
         if pystray is None:
-            self.root.destroy()
+            self.show_dependency_warning(is_closing=True)
             return
-            
         self.root.withdraw()
         if self.icon is None:
             self.show_tray_icon()
@@ -325,6 +236,7 @@ class HomelabApp(tk.Tk):
         if self.icon:
             self.icon.stop()
         self.running = False
+        self.stop_tunnel()
         self.root.after(0, self.root.destroy)
 
     def show_tray_icon(self):
@@ -332,139 +244,60 @@ class HomelabApp(tk.Tk):
             image = Image.new('RGB', (64, 64), color=(30, 30, 30))
             draw = ImageDraw.Draw(image)
             draw.ellipse((16, 16, 48, 48), fill=(0, 200, 0))
-            
             menu = pystray.Menu(
                 pystray.MenuItem("Show Manager", self.show_window, default=True),
                 pystray.MenuItem("Exit Completely", self.exit_app)
             )
-            self.icon = pystray.Icon("HomelabRDP", image, "HomelabRDP Manager", menu)
+            self.icon = pystray.Icon("ReverseSSH", image, "Reverse SSH Manager", menu)
             threading.Thread(target=self.icon.run, daemon=True).start()
         except Exception as e:
             logger.error(f"Tray icon error: {e}")
-
-    def save_net_config(self):
-        self.config.update({
-            "LanInterface": self.var_lan.get(),
-            "LanMetric": int(self.var_lan_m.get()),
-            "WiFiInterface": self.var_wifi.get(),
-            "WiFiMetric": int(self.var_wifi_m.get()),
-            "WiFiGateway": self.var_gw.get(),
-            "AutoConnectWiFi": self.var_autoconn.get(),
-            "WiFiProfile": self.var_wifiprof.get()
-        })
-        save_config(self.config)
-        logger.info("Saved Network configuration.")
-
-    def save_and_apply_network(self):
-        self.save_net_config()
-        threading.Thread(target=self.apply_network, daemon=True).start()
-
-    def save_dash_config(self):
-        self.config.update({
-            "UseFirewall": self.var_use_fw.get(),
-            "AutoConnectWiFi": self.var_use_wifi.get(),
-            "UseStunnel": self.var_stunnel.get(),
-            "UseSSH": self.var_use_ssh.get(),
-            "AutoStartTunnel": self.var_auto.get()
-        })
-        save_config(self.config)
-        logger.info("Pipeline config saved.")
 
     def save_ssh_config(self):
         self.config.update({
             "HomelabHost": self.var_host.get(), "SshUser": self.var_user.get(),
             "SshPort": int(self.var_port.get()), "SshKeyPath": self.var_key.get(),
             "RemoteRdpPort": int(self.var_rmport.get()), "LocalRdpPort": int(self.var_lcport.get()),
-            "DnsCheckIntervalMinutes": int(self.var_intv.get()), "StunnelLocalPort": int(self.var_stloc.get())
+            "AutoStartTunnel": self.var_auto.get()
         })
         save_config(self.config)
         logger.info("Saved SSH configuration.")
-        
-        # Auto-restart tunnel if it's currently running
-        if self.ssh_process or self.stunnel_process:
+        if self.ssh_process:
             logger.info("Config changed, auto-restarting tunnel...")
             self.stop_tunnel()
             threading.Thread(target=self.start_tunnel, daemon=True).start()
 
-    def apply_network(self):
-        if not self.config.get("UseFirewall", True):
-            self.remove_network()
-            return
-            
-        logger.info("Applying network rules...")
-        network_ops.apply_interface_metrics(self.config["LanInterface"], self.config["LanMetric"], self.config["WiFiInterface"], self.config["WiFiMetric"])
-        network_ops.apply_firewall_rules(self.config["WiFiInterface"])
-        if self.last_ip:
-            network_ops.update_static_route(self.last_ip, self.config["WiFiInterface"], self.config["WiFiGateway"])
-            network_ops.block_ip_on_lan(self.last_ip, self.config["LanInterface"])
-        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Active", foreground="green"))
-
-    def remove_network(self):
-        logger.info("Removing network rules...")
-        network_ops.remove_firewall_rules()
-        network_ops.remove_static_routes()
-        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red"))
+    def kill_orphaned_ssh(self):
+        try:
+            subprocess.run(["taskkill", "/F", "/IM", "ssh.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=0x08000000)
+        except:
+            pass
 
     def start_tunnel(self):
         if self.ssh_process and self.ssh_process.poll() is None:
             return
             
-        if self.config.get("AutoConnectWiFi") and self.config.get("WiFiProfile"):
-            logger.info(f"Connecting to WiFi '{self.config['WiFiProfile']}'...")
-            network_ops.connect_wifi(self.config["WiFiProfile"], self.config["WiFiInterface"])
-            time.sleep(3)
-            
-        if self.config.get("UseFirewall", True):
-            self.apply_network()
-            
-        if not self.config.get("UseSSH", True):
-            logger.info("Reverse SSH is disabled in pipeline.")
-            return
-            
-        network_ops.kill_orphaned_ssh()
+        self.kill_orphaned_ssh()
         
-        # Explicitly bind to WiFi IP to bypass Windows routing quirk
-        wifi_ip = network_ops.get_interface_ip(self.config.get("WiFiInterface", "WiFi 2"))
+        target_host = self.config["HomelabHost"]
+        target_port = self.config.get("SshPort", 22)
         
-        use_stunnel = self.config.get("UseStunnel", True)
-        stunnel_local = self.config.get("StunnelLocalPort", 2222)
-        
-        # Determine actual SSH target
-        target_host = "127.0.0.1" if use_stunnel else self.config["HomelabHost"]
-        target_port = stunnel_local if use_stunnel else self.config.get("SshPort", 22)
-        
-        network_ops.kill_remote_port(
-            ssh_exe=self.config.get("SshExePath", "ssh.exe"),
-            host=target_host,
-            port=self.config["RemoteRdpPort"],
-            user=self.config["SshUser"],
-            key_path=self.config.get("SshKeyPath"),
-            ssh_port=target_port,
-            bind_ip=wifi_ip if not use_stunnel else None
-        )
-        
-        if use_stunnel:
-            logger.info(f"Using pre-configured Stunnel on 127.0.0.1:{stunnel_local}")
-
         cmd = [
             self.config.get("SshExePath", "ssh.exe"), "-N",
             "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "-o", "StrictHostKeyChecking=accept-new"
         ]
         if self.config.get("SshKeyPath"):
             cmd.extend(["-i", self.config["SshKeyPath"]])
+        
         cmd.extend(["-p", str(target_port)])
         cmd.extend(["-R", f'{self.config["RemoteRdpPort"]}:localhost:{self.config["LocalRdpPort"]}'])
-        
-        if wifi_ip and not use_stunnel:
-            cmd.extend(["-b", wifi_ip])
-            
         cmd.append(f'{self.config["SshUser"]}@{target_host}')
         
         try:
+            logger.info(f"Starting SSH: {' '.join(cmd)}")
             self.ssh_process = subprocess.Popen(cmd, creationflags=0x08000000, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
             logger.info(f"SSH Tunnel started (PID: {self.ssh_process.pid})")
             
-            # Start a thread to read SSH stderr and log it to the UI
             def read_ssh_stderr(proc):
                 while proc.poll() is None:
                     line = proc.stderr.readline()
@@ -490,85 +323,41 @@ class HomelabApp(tk.Tk):
                 self.ssh_process.kill()
             self.ssh_process = None
             logger.info("SSH Tunnel stopped.")
-            
-        network_ops.kill_orphaned_ssh()
+        self.kill_orphaned_ssh()
+        self.update_status()
 
     def add_to_startup(self):
         try:
             py_exe = sys.executable
             script_path = os.path.abspath(__file__)
-            
             tr_arg = f'"{py_exe}" "{script_path}"'
             subprocess.run([
-                "schtasks", "/create", "/tn", "HomelabRDP_Manager",
+                "schtasks", "/create", "/tn", "ReverseSSH_Manager",
                 "/tr", tr_arg, "/sc", "onlogon", "/rl", "highest", "/f"
             ], check=True, creationflags=0x08000000)
-            
-            startup_dir = os.path.join(os.environ["APPDATA"], "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
-            old_bat = os.path.join(startup_dir, "HomelabRDP.bat")
-            if os.path.exists(old_bat):
-                os.remove(old_bat)
-                
-            desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
-            shortcut = os.path.join(desktop, "HomelabRDP (No UAC).bat")
-            with open(shortcut, "w") as f:
-                f.write('@echo off\nschtasks /run /tn "HomelabRDP_Manager"\n')
-                
-            logger.info("Added to Task Scheduler (No UAC). Desktop shortcut created.")
-            messagebox.showinfo("Success", "Added to Task Scheduler. Desktop shortcut created for manual launch.")
+            logger.info("Added to Task Scheduler.")
+            messagebox.showinfo("Success", "Added to Task Scheduler.")
         except Exception as e:
             logger.error(f"Failed to add startup: {e}")
-            messagebox.showerror("Error", f"Failed to add startup: {e}")
 
     def remove_from_startup(self):
         try:
             subprocess.run([
-                "schtasks", "/delete", "/tn", "HomelabRDP_Manager", "/f"
+                "schtasks", "/delete", "/tn", "ReverseSSH_Manager", "/f"
             ], check=True, creationflags=0x08000000)
-            
-            desktop = os.path.join(os.environ["USERPROFILE"], "Desktop")
-            shortcut = os.path.join(desktop, "HomelabRDP (No UAC).bat")
-            if os.path.exists(shortcut):
-                os.remove(shortcut)
-                
             logger.info("Removed from Task Scheduler.")
             messagebox.showinfo("Success", "Removed from Task Scheduler.")
         except Exception as e:
             logger.error(f"Failed to remove startup: {e}")
-            messagebox.showerror("Error", f"Failed to remove startup: {e}")
 
-    # --- BACKGROUND THREAD ---
     def background_worker(self):
         logger.info("Background thread started.")
-        self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Checking..."))
-        if network_ops.test_firewall_rules_active():
-            self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Active", foreground="green"))
-        else:
-            self.after(0, lambda: self.lbl_fw.config(text="Firewall Rules: Inactive", foreground="red"))
-            
         while self.running:
-            if self.config.get("UseFirewall", True):
-                ip = network_ops.resolve_ip(self.config["HomelabHost"])
-                if ip:
-                    self.after(0, lambda ip_val=ip: self.lbl_ip.config(text=f"Homelab IP: {ip_val}", foreground="blue"))
-                    if ip != self.last_ip:
-                        logger.info(f"DNS IP changed: {self.last_ip} -> {ip}")
-                        self.last_ip = ip
-                        network_ops.update_static_route(ip, self.config["WiFiInterface"], self.config["WiFiGateway"])
-                        network_ops.block_ip_on_lan(ip, self.config["LanInterface"])
-                else:
-                    self.after(0, lambda: self.lbl_ip.config(text=f"Homelab IP: Failed to resolve", foreground="red"))
-            
-            # Keepalive check
-            if self.config.get("AutoStartTunnel", True) and self.config.get("UseSSH", True):
+            if self.config.get("AutoStartTunnel", True):
                 if not (self.ssh_process and self.ssh_process.poll() is None):
                     logger.info("Auto-restarting SSH tunnel...")
                     self.start_tunnel()
-                    
-            # Sleep in small chunks for responsive shutdown
-            for _ in range(self.config.get("DnsCheckIntervalMinutes", 10) * 60):
-                if not self.running: break
-                time.sleep(1)
+            time.sleep(5)
 
 if __name__ == "__main__":
     app = HomelabApp()
