@@ -1,0 +1,25 @@
+# Địa chỉ IP hoặc Tên miền của FRP Server (Thay X.X.X.X bằng IP VPS/Server của bạn)
+serverAddr = "X.X.X.X"
+serverPort = 7000
+
+# Khai báo Token bảo mật (Phải giống y hệt ở Server)
+auth.method = "token"
+auth.token = "d8fc4526cde3abc1309acabdc4076ff2"
+
+# Ví dụ 1: Forward port SSH (22)
+# Mở port 6000 trên Server. 
+# Sau đó, có thể SSH từ xa bằng lệnh: ssh -p 6000 username@X.X.X.X
+[[proxies]]
+name = "ssh"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 22
+remotePort = 6000
+
+# Ví dụ 2: Forward một dịch vụ Web bất kỳ ở port 8080 (Nếu cần)
+# [[proxies]]
+# name = "web"
+# type = "tcp"
+# localIP = "127.0.0.1"
+# localPort = 8080
+# remotePort = 8080

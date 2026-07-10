@@ -1,0 +1,13 @@
+[Unit]
+Description=FRP Client Service
+After=network.target network-online.target syslog.target
+
+[Service]
+Type=simple
+# Khởi động lại nếu bị lỗi
+Restart=on-failure
+RestartSec=5s
+ExecStart=/usr/local/bin/frpc -c /etc/frp/frpc.toml
+
+[Install]
+WantedBy=multi-user.target

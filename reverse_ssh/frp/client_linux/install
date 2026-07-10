@@ -1,0 +1,35 @@
+# Hướng Dẫn Cài Đặt FRP Client (frpc) trên Linux
+
+FRP Client (frpc) sẽ được cài đặt trên máy bạn muốn điều khiển từ xa (ví dụ máy ở nhà, máy trạm Linux, v.v.).
+
+## Bước 1: Tải và giải nén FRP trên Linux
+
+Mở Terminal của máy Client và chạy lần lượt các lệnh sau:
+
+```bash
+# 1. Tải FRP bản mới nhất cho Linux (tương tự server)
+wget https://github.com/fatedier/frp/releases/download/v0.58.1/frp_0.58.1_linux_amd64.tar.gz
+
+# 2. Giải nén file vừa tải
+tar -zxvf frp_0.58.1_linux_amd64.tar.gz
+
+# 3. Di chuyển vào thư mục vừa giải nén
+cd frp_0.58.1_linux_amd64
+
+# 4. Copy file chạy (frpc) và file cấu hình (frpc.toml) vào hệ thống
+sudo cp frpc /usr/local/bin/
+sudo mkdir -p /etc/frp
+sudo cp frpc.toml /etc/frp/
+
+# 5. Mở file cấu hình frpc.toml lên và dán nội dung đã cấu hình vào (nhớ thay IP Server)
+sudo nano /etc/frp/frpc.toml
+
+# 6. Mở file cấu hình systemd
+sudo nano /etc/systemd/system/frpc.service
+
+# 7. Khởi động dịch vụ
+sudo systemctl daemon-reload
+sudo systemctl enable frpc
+sudo systemctl start frpc
+sudo systemctl status frpc
+```
