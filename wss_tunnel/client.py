@@ -31,8 +31,9 @@ async def proxy_ws_to_tcp(ws, reader, writer):
                 await writer.drain()
         except websockets.exceptions.ConnectionClosed:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"Exception in ws_to_tcp: {e}")
         finally:
             writer.close()
             await writer.wait_closed()
@@ -46,8 +47,9 @@ async def proxy_ws_to_tcp(ws, reader, writer):
                 await ws.send(data)
         except websockets.exceptions.ConnectionClosed:
             pass
-        except Exception:
-            pass
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"Exception in tcp_to_ws: {e}")
         finally:
             writer.close()
             await ws.close()
@@ -88,7 +90,9 @@ async def run_client():
                 # Start the bidirectional proxy
                 await proxy_ws_to_tcp(ws, reader, writer)
                 
-        except Exception:
+        except Exception as e:
+            import traceback; traceback.print_exc()
+            print(f"Exception in run_client main loop: {e}")
             # Sleep and retry on connection failure
             await asyncio.sleep(5)
 
