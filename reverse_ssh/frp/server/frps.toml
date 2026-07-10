@@ -10,3 +10,7 @@ webServer.password = "admin123"
 # Khai báo Token bảo mật
 auth.method = "token"
 auth.token = "d8fc4526cde3abc1309acabdc4076ff2"
+
+# === CHẾ ĐỘ TÀNG HÌNH TLS ===
+# Bắt buộc tất cả Client kết nối tới phải mã hóa TLS
+transport.tls.force = true

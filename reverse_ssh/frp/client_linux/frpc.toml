@@ -1,25 +1,97 @@
 # Địa chỉ IP hoặc Tên miền của FRP Server (Thay X.X.X.X bằng IP VPS/Server của bạn)
-serverAddr = "X.X.X.X"
+serverAddr = "home.victorphan.net"
 serverPort = 7000
 
 # Khai báo Token bảo mật (Phải giống y hệt ở Server)
 auth.method = "token"
 auth.token = "d8fc4526cde3abc1309acabdc4076ff2"
 
-# Ví dụ 1: Forward port SSH (22)
-# Mở port 6000 trên Server. 
-# Sau đó, có thể SSH từ xa bằng lệnh: ssh -p 6000 username@X.X.X.X
+# === CHẾ ĐỘ TÀNG HÌNH TLS ===
+# Bật mã hóa kết nối giữa Client và Server
+transport.tls.enable = true
+
+# --- DANH SÁCH PORT MAPPING ---
+
 [[proxies]]
-name = "ssh"
+name = "port_8081"
 type = "tcp"
 localIP = "127.0.0.1"
-localPort = 22
-remotePort = 6000
+localPort = 8081
+remotePort = 8081
 
-# Ví dụ 2: Forward một dịch vụ Web bất kỳ ở port 8080 (Nếu cần)
-# [[proxies]]
-# name = "web"
-# type = "tcp"
-# localIP = "127.0.0.1"
-# localPort = 8080
-# remotePort = 8080
+[[proxies]]
+name = "port_9002"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 9002
+remotePort = 9002
+
+[[proxies]]
+name = "port_8080"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8080
+remotePort = 8080
+
+[[proxies]]
+name = "port_8090"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8090
+remotePort = 8090
+
+[[proxies]]
+name = "port_8001"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8001
+remotePort = 8001
+
+[[proxies]]
+name = "port_3010"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3010
+remotePort = 3010
+
+[[proxies]]
+name = "port_3000"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3000
+remotePort = 3000
+
+[[proxies]]
+name = "port_3005"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3005
+remotePort = 3005
+
+[[proxies]]
+name = "port_5000"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 5000
+remotePort = 5000
+
+[[proxies]]
+name = "port_8088"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 8088
+remotePort = 8088
+
+[[proxies]]
+name = "port_3690"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 3690
+remotePort = 3690
+
+[[proxies]]
+name = "port_2225"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 2225
+remotePort = 2225
