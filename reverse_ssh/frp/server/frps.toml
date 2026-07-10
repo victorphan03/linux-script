@@ -1,0 +1,12 @@
+# Cổng để Server lắng nghe các Client kết nối tới
+bindPort = 7000
+
+# (Tùy chọn) Bật giao diện Web quản lý FRP ở cổng 7500
+webServer.addr = "0.0.0.0"
+webServer.port = 7500
+webServer.user = "admin"
+webServer.password = "admin123"
+
+# Khai báo Token bảo mật
+auth.method = "token"
+auth.token = "d8fc4526cde3abc1309acabdc4076ff2"

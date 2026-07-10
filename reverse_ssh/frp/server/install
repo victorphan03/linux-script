@@ -1,0 +1,33 @@
+# Hướng Dẫn Cài Đặt FRP Server (frps) trên Ubuntu
+
+FRP (Fast Reverse Proxy) bao gồm 2 phần: **FRPS** (Server - chạy trên Ubuntu/Homelab) và **FRPC** (Client - chạy trên máy trạm/máy công ty). Dưới đây là hướng dẫn cài đặt phần **FRP Server** chạy ngầm bằng systemd với cấu hình `.toml` mới nhất.
+
+## Bước 1: Tải và giải nén FRP trên Ubuntu
+
+Mở Terminal của máy Ubuntu (hoặc kết nối qua SSH) và chạy lần lượt các lệnh sau:
+
+```bash
+# 1. Tải FRP bản mới nhất cho Linux (ví dụ 0.58.1)
+wget https://github.com/fatedier/frp/releases/download/v0.58.1/frp_0.58.1_linux_amd64.tar.gz
+
+# 2. Giải nén file vừa tải
+tar -zxvf frp_0.58.1_linux_amd64.tar.gz
+
+# 3. Di chuyển vào thư mục vừa giải nén
+cd frp_0.58.1_linux_amd64
+
+# 4. Copy file chạy (frps) và file cấu hình (frps.toml) vào hệ thống
+sudo cp frps /usr/local/bin/
+sudo mkdir -p /etc/frp
+sudo cp frps.toml /etc/frp/
+
+openssl rand -hex 16
+
+sudo nano /etc/frp/frps.toml
+
+sudo nano /etc/systemd/system/frps.service
+
+sudo systemctl daemon-reload
+sudo systemctl enable frps
+sudo systemctl start frps
+sudo systemctl status frps
