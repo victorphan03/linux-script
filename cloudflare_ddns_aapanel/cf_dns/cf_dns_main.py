@@ -69,19 +69,24 @@ class cf_dns_main:
         auth_email = getattr(args, 'AUTH_EMAIL', '')
         auth_key = getattr(args, 'AUTH_KEY', '')
         zone_id = getattr(args, 'ZONE_ID', '')
+        record_type = getattr(args, 'record_type', '')
         
         if not auth_email or not auth_key or not zone_id:
             if hasattr(args, 'get'):
                 auth_email = args.get('AUTH_EMAIL', '')
                 auth_key = args.get('AUTH_KEY', '')
                 zone_id = args.get('ZONE_ID', '')
+                record_type = args.get('record_type', '')
 
         if not auth_email or not auth_key or not zone_id:
             return public.returnMsg(False, 'Vui lòng nhập đầy đủ Email, API Key và Zone ID')
             
         try:
             import urllib.request
-            url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type=A"
+            if record_type:
+                url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?type={record_type}&per_page=100"
+            else:
+                url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records?per_page=100"
             req = urllib.request.Request(url, headers={
                 'X-Auth-Email': auth_email,
                 'Authorization': f'Bearer {auth_key}',
@@ -96,6 +101,8 @@ class cf_dns_main:
                 return public.returnMsg(False, f'Lỗi API: {err_msg}')
                 
             records = res_data.get('result', [])
+            if not record_type:
+                records = [r for r in records if r.get('type') in ['A', 'CNAME']]
             return {'status': True, 'data': records}
         except Exception as e:
             return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
@@ -105,6 +112,7 @@ class cf_dns_main:
         auth_email = getattr(args, 'AUTH_EMAIL', '')
         auth_key = getattr(args, 'AUTH_KEY', '')
         zone_id = getattr(args, 'ZONE_ID', '')
+        record_type = getattr(args, 'record_type', 'A')
         record_name = getattr(args, 'record_name', '')
         content = getattr(args, 'content', '')
         proxied = getattr(args, 'proxied', 'false') == 'true'
@@ -113,6 +121,7 @@ class cf_dns_main:
             auth_email = auth_email or args.get('AUTH_EMAIL', '')
             auth_key = auth_key or args.get('AUTH_KEY', '')
             zone_id = zone_id or args.get('ZONE_ID', '')
+            record_type = record_type or args.get('record_type', 'A')
             record_name = record_name or args.get('record_name', '')
             content = content or args.get('content', '')
             if not getattr(args, 'proxied', ''):
@@ -120,12 +129,16 @@ class cf_dns_main:
 
         if not auth_email or not auth_key or not zone_id or not record_name or not content:
             return public.returnMsg(False, 'Vui lòng điền đầy đủ thông tin')
+
+        record_type = record_type.upper()
+        if record_type not in ['A', 'CNAME']:
+            return public.returnMsg(False, 'Loại Record không hợp lệ (chỉ hỗ trợ A và CNAME)')
             
         try:
             import urllib.request
             url = f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
             data = json.dumps({
-                "type": "A",
+                "type": record_type,
                 "name": record_name,
                 "content": content,
                 "ttl": 120,
@@ -145,7 +158,7 @@ class cf_dns_main:
                 err_msg = res_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
                 return public.returnMsg(False, f'Lỗi API: {err_msg}')
                 
-            return public.returnMsg(True, 'Đã thêm Record thành công')
+            return public.returnMsg(True, f'Đã thêm Record {record_type} thành công')
         except Exception as e:
             return public.returnMsg(False, f'Lỗi kết nối: {str(e)}')
 

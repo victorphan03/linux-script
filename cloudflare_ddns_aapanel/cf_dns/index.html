@@ -131,7 +131,7 @@
                 '<div class="line"><span class="tname">Email</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_email" style="width:300px" placeholder="Email tài khoản Cloudflare"></div></div>' +
                 '<div class="line"><span class="tname">API Key/Token</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_key" style="width:300px" placeholder="Global API Key hoặc API Token"></div></div>' +
                 '<div class="line"><span class="tname">Zone ID</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="cf_zone" style="width:300px" placeholder="Zone ID của tên miền"></div></div>' +
-                '<div class="line"><div class="info-r"><button class="btn btn-success btn-sm" onclick="cf_dns.fetch_records()">Tải Danh Sách A Record</button><button class="btn btn-primary btn-sm ml10" style="margin-left:10px;" onclick="cf_dns.add_record_view()">Thêm Subdomain</button></div></div>' +
+                '<div class="line"><div class="info-r"><button class="btn btn-success btn-sm" onclick="cf_dns.fetch_records()">Tải Danh Sách Record (A/CNAME)</button><button class="btn btn-primary btn-sm ml10" style="margin-left:10px;" onclick="cf_dns.add_record_view()">Thêm Record Mới</button></div></div>' +
                 '<div id="fetch_results" style="margin-top: 15px; height: 350px;"></div>' +
                 '<div class="bt-form-submit-btn"><button type="button" class="btn btn-danger btn-sm btn-title" onclick="layer.closeAll()">Đóng</button><button type="button" class="btn btn-success btn-sm btn-title" onclick="cf_dns.save_credentials()">Lưu Thông Tin</button></div>' +
                 '</div>';
@@ -139,7 +139,7 @@
             layer.open({
                 type: 1,
                 title: 'Quản lý Zone Cloudflare',
-                area: '600px',
+                area: '650px',
                 closeBtn: 1,
                 shadeClose: false,
                 content: html
@@ -199,35 +199,56 @@
 
                 for (var i = 0; i < records.length; i++) {
                     var r = records[i];
+                    var recType = r.type || 'A';
+                    var typeBadge = recType === 'CNAME' 
+                        ? '<span style="background-color: #f39c12; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold;">CNAME</span>'
+                        : '<span style="background-color: #20a53a; color: #fff; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold;">A</span>';
+                    
                     var isActive = activeDomains.indexOf(r.name) !== -1;
                     var proxied = r.proxied ? '<span class="status-green">Bật</span>' : '<span class="status-red">Tắt</span>';
 
-                    var switchHtml = '<div class="bt-status" style="margin-top:0px;">' +
-                        '<input class="btswitch btswitch-ios" id="ddns_' + i + '" type="checkbox" ' + (isActive ? 'checked' : '') + '>' +
-                        '<label class="btswitch-btn" for="ddns_' + i + '" onclick="cf_dns.toggle_ddns(\'' + r.name + '\', ' + r.proxied + ', \'' + email + '\', \'' + key + '\', \'' + zone + '\', this)"></label>' +
-                        '</div>';
+                    var switchHtml = '';
+                    if (recType === 'A') {
+                        switchHtml = '<div class="bt-status" style="margin-top:0px;">' +
+                            '<input class="btswitch btswitch-ios" id="ddns_' + i + '" type="checkbox" ' + (isActive ? 'checked' : '') + '>' +
+                            '<label class="btswitch-btn" for="ddns_' + i + '" onclick="cf_dns.toggle_ddns(\'' + r.name + '\', ' + r.proxied + ', \'' + email + '\', \'' + key + '\', \'' + zone + '\', this)"></label>' +
+                            '</div>';
+                    } else {
+                        switchHtml = '<span class="text-muted" title="CNAME không áp dụng DDNS IP">-</span>';
+                    }
 
                     tbody += '<tr>' +
+                        '<td>' + typeBadge + '</td>' +
                         '<td>' + r.name + '</td>' +
-                        '<td>' + r.content + '</td>' +
+                        '<td style="word-break: break-all;">' + r.content + '</td>' +
                         '<td>' + proxied + '</td>' +
                         '<td><div style="display: flex; align-items: center;">' + switchHtml + '<a href="javascript:;" class="btlink" style="color: red; margin-left: 15px;" onclick="cf_dns.delete_cloudflare_record(\'' + r.id + '\', \'' + r.name + '\', \'' + email + '\', \'' + key + '\', \'' + zone + '\')">Xóa</a></div></td>' +
                         '</tr>';
                 }
 
                 if (records.length === 0) {
-                    tbody = '<tr><td colspan="4" class="text-center">Không có A Record nào</td></tr>';
+                    tbody = '<tr><td colspan="5" class="text-center">Không có bản ghi A/CNAME nào</td></tr>';
                 }
 
                 var table = '<div class="divtable" style="max-height: 350px; overflow-y: auto;">' +
                     '<table class="table table-hover">' +
-                    '<thead><tr><th>Tên miền</th><th>IP Hiện tại</th><th>Proxy</th><th>DDNS (Bật/Tắt)</th></tr></thead>' +
+                    '<thead><tr><th>Loại</th><th>Tên miền</th><th>Giá trị (IP/Target)</th><th>Proxy</th><th>DDNS (Bật/Tắt)</th></tr></thead>' +
                     '<tbody>' + tbody + '</tbody>' +
                     '</table>' +
                     '</div>';
 
                 $('#fetch_results').html(table);
             });
+        },
+
+        on_record_type_change: function (val) {
+            if (val === 'CNAME') {
+                $('#record_content_label').text('Target Domain');
+                $('#new_record_content').attr('placeholder', 'Tên miền đích (vd: target.domain.com)');
+            } else {
+                $('#record_content_label').text('IPv4');
+                $('#new_record_content').attr('placeholder', 'Địa chỉ IP (vd: 1.1.1.1)');
+            }
         },
 
         add_record_view: function () {
@@ -241,8 +262,14 @@
             }
 
             var html = '<div class="bt-form pd20 pb70">' +
+                '<div class="line"><span class="tname">Loại Record</span><div class="info-r">' +
+                '<select class="bt-input-text mr5" id="new_record_type" style="width:120px" onchange="cf_dns.on_record_type_change(this.value)">' +
+                '<option value="A">A (IPv4)</option>' +
+                '<option value="CNAME">CNAME (Domain)</option>' +
+                '</select>' +
+                '</div></div>' +
                 '<div class="line"><span class="tname">Tên miền</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="new_record_name" style="width:250px" placeholder="Ví dụ: sub.domain.com"></div></div>' +
-                '<div class="line"><span class="tname">IPv4</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="new_record_content" style="width:250px" placeholder="Địa chỉ IP (vd: 1.1.1.1)"></div></div>' +
+                '<div class="line"><span class="tname" id="record_content_label">IPv4</span><div class="info-r"><input class="bt-input-text mr5" type="text" id="new_record_content" style="width:250px" placeholder="Địa chỉ IP (vd: 1.1.1.1)"></div></div>' +
                 '<div class="line"><span class="tname">Proxy</span><div class="info-r">' +
                 '<select class="bt-input-text mr5" id="new_record_proxied" style="width:100px">' +
                 '<option value="false">Tắt</option>' +
@@ -254,8 +281,8 @@
 
             this.addLayerIndex = layer.open({
                 type: 1,
-                title: 'Thêm A Record mới',
-                area: '450px',
+                title: 'Thêm Record mới',
+                area: '480px',
                 closeBtn: 1,
                 shadeClose: false,
                 content: html
@@ -263,12 +290,14 @@
         },
 
         submit_add_record: function (email, key, zone) {
+            var record_type = $('#new_record_type').val() || 'A';
             var name = $('#new_record_name').val();
             var content = $('#new_record_content').val();
             var proxied = $('#new_record_proxied').val();
 
             if (!name || !content) {
-                layer.msg('Vui lòng nhập tên miền và IP', { icon: 2 });
+                var fieldLabel = record_type === 'CNAME' ? 'tên miền đích (Target)' : 'địa chỉ IP';
+                layer.msg('Vui lòng nhập tên miền và ' + fieldLabel, { icon: 2 });
                 return;
             }
 
@@ -277,6 +306,7 @@
                 AUTH_EMAIL: email,
                 AUTH_KEY: key,
                 ZONE_ID: zone,
+                record_type: record_type,
                 record_name: name,
                 content: content,
                 proxied: proxied
