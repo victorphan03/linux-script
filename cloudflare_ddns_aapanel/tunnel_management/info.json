@@ -1,0 +1,12 @@
+{
+  "title": "Cloudflare Tunnel Manager",
+  "name": "cf_tunnel_manager",
+  "type": "tool",
+  "ps": "Manage Cloudflare Tunnel Ingress Rules and DNS CNAME records directly from aaPanel",
+  "version": "1.0.0",
+  "versions": "1.0.0",
+  "checks": "/www/server/panel/plugin/cf_tunnel_manager",
+  "author": "Custom",
+  "home": "localhost",
+  "icon": "icon.png"
+}

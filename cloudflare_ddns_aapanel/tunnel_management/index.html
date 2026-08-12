@@ -1,0 +1,362 @@
+<style>
+    .cf-container { padding: 15px; }
+    .cf-table { margin-top: 15px; }
+</style>
+
+<div class="cf-container">
+    <ul class="nav nav-tabs" id="cfTabs">
+        <li class="active"><a href="javascript:;" onclick="switchCfTab('routesTab', this)">Hostnames List</a></li>
+        <li><a href="javascript:;" onclick="switchCfTab('configTab', this)">API Configuration</a></li>
+    </ul>
+
+    <div class="tab-content" style="margin-top: 15px;">
+        <!-- TAB 1: ROUTES -->
+        <div class="tab-pane active" id="routesTab" style="display: block;">
+            <button class="btn btn-success btn-sm" onclick="showAddModal()">+ Add New Hostname</button>
+            <button class="btn btn-default btn-sm" onclick="loadRoutes()">Refresh</button>
+            
+            <table class="table table-hover cf-table">
+                <thead>
+                    <tr>
+                        <th>Hostname</th>
+                        <th>Path</th>
+                        <th>Service Target</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="routesTable">
+                    <tr><td colspan="4" class="text-center">Loading data...</td></tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- TAB 2: SETTINGS -->
+        <div class="tab-pane" id="configTab" style="display: none;">
+            <form id="configForm" class="form-horizontal" style="max-width: 650px;">
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">API Token</label>
+                    <div class="col-sm-6">
+                        <input type="password" class="form-control" name="api_token" id="cfg_api_token" placeholder="Cloudflare API Token">
+                    </div>
+                    <div class="col-sm-3" style="padding-left: 0;">
+                        <button type="button" class="btn btn-info btn-sm" onclick="fetchResources()" title="Fetch Accounts, Tunnels, and Zones">Fetch Options</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">Account</label>
+                    <div class="col-sm-9">
+                        <select class="form-control" name="account_id" id="cfg_account_id" onchange="onAccountChange()">
+                            <option value="">-- Enter API Token & click Fetch Options --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">Zone (DNS)</label>
+                    <div class="col-sm-9">
+                        <select class="form-control" name="zone_id" id="cfg_zone_id">
+                            <option value="">-- Select Zone / Domain (Optional) --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="col-sm-3 control-label">Tunnel</label>
+                    <div class="col-sm-9">
+                        <select class="form-control" name="tunnel_id" id="cfg_tunnel_id" onchange="checkManualTunnel(this.value)">
+                            <option value="">-- Select Tunnel --</option>
+                        </select>
+                        <input type="text" class="form-control" id="cfg_tunnel_id_manual" placeholder="Enter Tunnel UUID manually (e.g. 12345678-abcd-...)" style="display: none; margin-top: 5px;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div class="col-sm-offset-3 col-sm-9">
+                        <button type="button" class="btn btn-primary" onclick="saveConfig()">Save Settings</button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script type="text/javascript">
+    var currentConfig = {};
+
+    function switchCfTab(tabId, el) {
+        $('#cfTabs li').removeClass('active');
+        $(el).parent().addClass('active');
+        $('#routesTab, #configTab').removeClass('active').hide();
+        $('#' + tabId).addClass('active').show();
+    }
+
+    function checkManualTunnel(val) {
+        if (val === 'MANUAL') {
+            $('#cfg_tunnel_id_manual').show().focus();
+        } else {
+            $('#cfg_tunnel_id_manual').hide();
+        }
+    }
+
+    function loadConfig() {
+        request_plugin('get_config', {}, function(res) {
+            if(res.status && res.msg) {
+                currentConfig = res.msg || {};
+                $('#cfg_api_token').val(currentConfig.api_token || '');
+                if (currentConfig.api_token) {
+                    fetchResources(currentConfig.account_id, currentConfig.tunnel_id, currentConfig.zone_id);
+                }
+            }
+        });
+    }
+
+    function fetchResources(selAccount, selTunnel, selZone) {
+        var token = $('#cfg_api_token').val().trim();
+        if(!token) {
+            layer.msg('Please enter an API Token first', {icon: 2});
+            return;
+        }
+
+        var loadIdx = layer.load(2);
+
+        // 1. Fetch Accounts
+        request_plugin('get_accounts', {api_token: token}, function(resAcc) {
+            var $acc = $('#cfg_account_id').empty().append('<option value="">-- Select Account --</option>');
+            if(resAcc.status && resAcc.msg && resAcc.msg.length > 0) {
+                $.each(resAcc.msg, function(i, item) {
+                    $acc.append('<option value="' + item.id + '">' + item.name + ' (' + item.id + ')</option>');
+                });
+                var accToSelect = selAccount || currentConfig.account_id || resAcc.msg[0].id;
+                $acc.val(accToSelect);
+            } else if(currentConfig.account_id) {
+                $acc.append('<option value="' + currentConfig.account_id + '" selected>' + currentConfig.account_id + '</option>');
+            }
+
+            var chosenAccount = $('#cfg_account_id').val();
+
+            // 2. Fetch Tunnels
+            request_plugin('get_tunnels', {api_token: token, account_id: chosenAccount}, function(resTun) {
+                var $tun = $('#cfg_tunnel_id').empty().append('<option value="">-- Select Tunnel --</option>');
+                if(resTun.status && resTun.msg && resTun.msg.length > 0) {
+                    $.each(resTun.msg, function(i, item) {
+                        var statusStr = item.status ? ' [' + item.status + ']' : '';
+                        $tun.append('<option value="' + item.id + '">' + item.name + statusStr + ' (' + item.id + ')</option>');
+                    });
+                    $tun.append('<option value="MANUAL">-- Enter Tunnel ID Manually --</option>');
+                    var tunToSelect = selTunnel || currentConfig.tunnel_id;
+                    if(tunToSelect) {
+                        $tun.val(tunToSelect);
+                        if(!$tun.val()) {
+                            $tun.val('MANUAL');
+                            $('#cfg_tunnel_id_manual').val(tunToSelect).show();
+                        } else {
+                            $('#cfg_tunnel_id_manual').hide();
+                        }
+                    }
+                } else {
+                    if (!resTun.status && resTun.msg) {
+                        layer.msg(resTun.msg, {icon: 2, time: 4000});
+                    }
+                    $tun.append('<option value="MANUAL" selected>-- Enter Tunnel ID Manually --</option>');
+                    $('#cfg_tunnel_id_manual').show();
+                    if (currentConfig.tunnel_id) {
+                        $('#cfg_tunnel_id_manual').val(currentConfig.tunnel_id);
+                    }
+                }
+            });
+
+            // 3. Fetch Zones
+            request_plugin('get_zones', {api_token: token}, function(resZone) {
+                layer.close(loadIdx);
+                var $zone = $('#cfg_zone_id').empty().append('<option value="">-- Select Zone / Domain (Optional) --</option>');
+                if(resZone.status && resZone.msg && resZone.msg.length > 0) {
+                    cachedZones = resZone.msg;
+                    $.each(resZone.msg, function(i, item) {
+                        $zone.append('<option value="' + item.id + '">' + item.name + ' (' + item.id + ')</option>');
+                    });
+                    var zoneToSelect = selZone || currentConfig.zone_id;
+                    if(zoneToSelect) $zone.val(zoneToSelect);
+                } else if(currentConfig.zone_id) {
+                    $zone.append('<option value="' + currentConfig.zone_id + '" selected>' + currentConfig.zone_id + '</option>');
+                }
+            });
+        });
+    }
+
+    function onAccountChange() {
+        var token = $('#cfg_api_token').val().trim();
+        var accountId = $('#cfg_account_id').val();
+        if(!token || !accountId) return;
+
+        var $tun = $('#cfg_tunnel_id').html('<option value="">Loading tunnels...</option>');
+        request_plugin('get_tunnels', {api_token: token, account_id: accountId}, function(resTun) {
+            $tun.empty().append('<option value="">-- Select Tunnel --</option>');
+            if(resTun.status && resTun.msg && resTun.msg.length > 0) {
+                $.each(resTun.msg, function(i, item) {
+                    var statusStr = item.status ? ' [' + item.status + ']' : '';
+                    $tun.append('<option value="' + item.id + '">' + item.name + statusStr + ' (' + item.id + ')</option>');
+                });
+                $tun.append('<option value="MANUAL">-- Enter Tunnel ID Manually --</option>');
+                $('#cfg_tunnel_id_manual').hide();
+            } else {
+                if (!resTun.status && resTun.msg) {
+                    layer.msg(resTun.msg, {icon: 2, time: 4000});
+                }
+                $tun.append('<option value="MANUAL" selected>-- Enter Tunnel ID Manually --</option>');
+                $('#cfg_tunnel_id_manual').show();
+            }
+        });
+    }
+
+    function saveConfig() {
+        var selectedTunnel = $('#cfg_tunnel_id').val();
+        var tunnelId = (selectedTunnel === 'MANUAL' || $('#cfg_tunnel_id_manual').is(':visible')) ? $('#cfg_tunnel_id_manual').val().trim() : selectedTunnel;
+
+        var data = {
+            api_token: $('#cfg_api_token').val(),
+            account_id: $('#cfg_account_id').val(),
+            tunnel_id: tunnelId,
+            zone_id: $('#cfg_zone_id').val()
+        };
+        request_plugin('save_config', data, function(res) {
+            layer.msg(res.msg, {icon: res.status ? 1 : 2});
+            if(res.status) {
+                currentConfig = data;
+                loadRoutes();
+            }
+        });
+    }
+
+    function loadRoutes() {
+        $('#routesTable').html('<tr><td colspan="4" class="text-center">Loading...</td></tr>');
+        request_plugin('get_routes', {}, function(res) {
+            if(!res.status) {
+                $('#routesTable').html('<tr><td colspan="4" class="text-center text-danger">'+res.msg+'</td></tr>');
+                return;
+            }
+            var html = '';
+            $.each(res.msg, function(i, item) {
+                html += '<tr>';
+                html += '<td><b>' + item.hostname + '</b></td>';
+                html += '<td>' + (item.path || '*') + '</td>';
+                html += '<td><code>' + item.service + '</code></td>';
+                html += '<td><a class="btn btn-xs btn-danger" onclick="deleteRoute(\''+item.hostname+'\', \''+(item.path||'')+'\')">Delete</a></td>';
+                html += '</tr>';
+            });
+            $('#routesTable').html(html || '<tr><td colspan="4" class="text-center">No routes available</td></tr>');
+        });
+    }
+
+    var cachedZones = [];
+
+    function showAddModal() {
+        var domainOptions = '';
+        if (cachedZones && cachedZones.length > 0) {
+            $.each(cachedZones, function(i, z) {
+                domainOptions += '<option value="' + z.name + '">' + z.name + '</option>';
+            });
+        }
+
+        var html = '<div class="pd20 form-horizontal" style="padding: 20px;">' +
+            '<div class="form-group">' +
+                '<label class="col-sm-3 control-label">Subdomain:</label>' +
+                '<div class="col-sm-9"><input class="form-control" id="new_subdomain" placeholder="www or vault (Optional)" /></div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="col-sm-3 control-label">Domain:</label>' +
+                '<div class="col-sm-9">' +
+                    (domainOptions ? '<select class="form-control" id="new_domain">' + domainOptions + '</select>' : '<input class="form-control" id="new_domain" placeholder="e.g. victorphan.net" />') +
+                '</div>' +
+            '</div>' +
+            '<div class="form-group">' +
+                '<label class="col-sm-3 control-label">Path (Optional):</label>' +
+                '<div class="col-sm-9"><input class="form-control" id="new_path" placeholder="e.g. /api or notifications/hub" /></div>' +
+            '</div>' +
+            '<hr style="margin: 15px 0;" />' +
+            '<div class="form-group">' +
+                '<label class="col-sm-3 control-label">Service Type:</label>' +
+                '<div class="col-sm-9">' +
+                    '<select class="form-control" id="new_type">' +
+                        '<option value="http">HTTP</option>' +
+                        '<option value="https">HTTPS</option>' +
+                        '<option value="tcp">TCP</option>' +
+                        '<option value="udp">UDP</option>' +
+                        '<option value="ssh">SSH</option>' +
+                        '<option value="rdp">RDP</option>' +
+                        '<option value="unix">UNIX Socket</option>' +
+                    '</select>' +
+                '</div>' +
+            '</div>' +
+            '<div class="form-group" id="url_wrap">' +
+                '<label class="col-sm-3 control-label">Service URL:</label>' +
+                '<div class="col-sm-9"><input class="form-control" id="new_url" placeholder="e.g. localhost:8080 or 127.0.0.1:80" /></div>' +
+            '</div>' +
+            '</div>';
+
+        layer.open({
+            type: 1,
+            title: "Add Published Application Route",
+            area: '540px',
+            content: html,
+            btn: ['Add Route', 'Cancel'],
+            yes: function(index) {
+                var sub = $('#new_subdomain').val().trim();
+                var dom = $('#new_domain').val().trim();
+                var path = $('#new_path').val().trim();
+                var sType = $('#new_type').val();
+                var sUrl = $('#new_url').val().trim();
+
+                if(!dom) {
+                    layer.msg('Domain is required!', {icon: 2});
+                    return;
+                }
+                if(!sUrl) {
+                    layer.msg('Service URL is required!', {icon: 2});
+                    return;
+                }
+
+                // Remove protocol if user typed it into URL field
+                sUrl = sUrl.replace(/^(http|https|tcp|udp|ssh|rdp|unix):\/\//i, '');
+
+                // Construct full hostname
+                var fullHostname = sub ? (sub + '.' + dom) : dom;
+                
+                // Construct target service URL
+                var targetService = sType + '://' + sUrl;
+
+                var p = {
+                    hostname: fullHostname,
+                    path: path,
+                    service_target: targetService
+                };
+
+                var load = layer.load();
+                request_plugin('add_route', p, function(res) {
+                    layer.close(load);
+                    layer.msg(res.msg, {icon: res.status ? 1 : 2});
+                    if(res.status) {
+                        layer.close(index);
+                        loadRoutes();
+                    }
+                });
+            }
+        });
+    }
+
+    function deleteRoute(hostname, path) {
+        layer.confirm('Are you sure you want to delete route ' + hostname + '?', {icon: 3}, function(index) {
+            var load = layer.load();
+            request_plugin('delete_route', {hostname: hostname, path: path}, function(res) {
+                layer.close(load);
+                layer.msg(res.msg, {icon: res.status ? 1 : 2});
+                if(res.status) loadRoutes();
+            });
+        });
+    }
+
+    function request_plugin(method, data, callback) {
+        $.post('/plugin?action=a&name=cf_tunnel_manager&s=' + method, data, function(res) {
+            callback(res);
+        });
+    }
+
+    loadConfig();
+    loadRoutes();
+</script>
