@@ -1,0 +1,7 @@
+name=tunnel_management
+category=system
+desc=Cloudflare Tunnel Management
+longdesc=Manage Cloudflare Tunnel Ingress Rules and DNS CNAME records directly from Webmin
+version=1.0
+os_support=*-linux
+depends=

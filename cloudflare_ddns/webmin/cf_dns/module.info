@@ -1,0 +1,7 @@
+name=cf_dns
+category=system
+desc=Cloudflare DNS Auto Update
+longdesc=Automatically update Cloudflare Dynamic DNS records for domains
+version=1.0
+os_support=*-linux
+depends=
