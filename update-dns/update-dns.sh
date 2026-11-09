@@ -1,25 +1,23 @@
 #!/bin/bash
 
 # =================================================================
-# CAU HINH (SUA THONG TIN CUA BAN TAI DAY)
+# CAU HINH
 # =================================================================
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_FILE="$SCRIPT_DIR/.env"
 
-# 1. Email tai khoan Cloudflare
-AUTH_EMAIL="basketballcantho@gmail.com"
+if [ -f "$ENV_FILE" ]; then
+    source "$ENV_FILE"
+elif [ -f "/root/update_dns/.env" ]; then
+    source "/root/update_dns/.env"
+fi
 
-# 2. Global API Key hoac API Token (Khuyen dung Token: Edit Zone DNS)
-# Lay tai: https://dash.cloudflare.com/profile/api-tokens
-AUTH_KEY="uaW5_3UvcEk3MPwXL5-gVK-HblaGVm-6z3ztZFiw"
-
-# 3. Zone ID (Tim o trang Overview cua ten mien trong Cloudflare, cot phai)
-ZONE_ID="de6c24854bcdec7289b8b343591a9f2d"
-
-# 4. Ten mien can cap nhat IP (Vi du: dns.victorphan.net)
-RECORD_NAME="home.victorphan.net"
-
-# 5. Trang thai dam may (true = Bat Proxy/Cam, false = Tat Proxy/Xam)
-# Voi AdGuard Home dung NAT Port hoac VPN, hay de false
-PROXIED=false
+# Gia tri mac dinh neu chua co trong .env
+AUTH_EMAIL="${AUTH_EMAIL:-your_email@example.com}"
+AUTH_KEY="${AUTH_KEY:-your_token_here}"
+ZONE_ID="${ZONE_ID:-your_zone_id_here}"
+RECORD_NAME="${RECORD_NAME:-home.victorphan.net}"
+PROXIED="${PROXIED:-false}"
 
 # =================================================================
 # LOGIC XU LY (KHONG CAN SUA DUOI NAY)
