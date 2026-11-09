@@ -79,3 +79,4 @@ else
     echo "Canh bao: Service chua khoi dong thanh cong. Kiem tra log:"
     systemctl status "$SERVICE_NAME" --no-pager
 fi
+
