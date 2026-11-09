@@ -3,8 +3,31 @@
 # Script cai dat update-dns thanh Systemd Service
 # =================================================================
 
+show_help() {
+    echo "=================================================================="
+    echo " Cai dat Update DNS Service vao he thong"
+    echo "=================================================================="
+    echo "Cach dung:"
+    echo "  sudo bash install.sh [TUY_CHON]"
+    echo ""
+    echo "Tuy chon:"
+    echo "  -h, --help    Hien thi huong dan su dung nay"
+    echo ""
+    echo "Chuc nang:"
+    echo "  - Kiem tra & cai dat jq, curl"
+    echo "  - Tao file service /etc/systemd/system/update-dns.service"
+    echo "  - Kich hoat service tu dong chay ngam moi 30 giay khi khoi dong VPS"
+    echo "=================================================================="
+    exit 0
+}
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    show_help
+fi
+
 if [ "$EUID" -ne 0 ]; then
     echo "Loi: Vui long chay voi quyen root: sudo bash install.sh"
+    echo "Chay 'bash install.sh -h' de xem huong dan."
     exit 1
 fi
 

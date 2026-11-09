@@ -3,8 +3,31 @@
 # Script go bo update-dns service khoi he thong
 # =================================================================
 
+show_help() {
+    echo "=================================================================="
+    echo " Go bo Update DNS Service khoi he thong"
+    echo "=================================================================="
+    echo "Cach dung:"
+    echo "  sudo bash uninstall.sh [TUY_CHON]"
+    echo ""
+    echo "Tuy chon:"
+    echo "  -h, --help    Hien thi huong dan su dung nay"
+    echo ""
+    echo "Chuc nang:"
+    echo "  - Dung va vo hieu hoa service update-dns.service"
+    echo "  - Xoa file cau hinh /etc/systemd/system/update-dns.service"
+    echo "  - Reload systemd daemon de lam sach he thong"
+    echo "=================================================================="
+    exit 0
+}
+
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    show_help
+fi
+
 if [ "$EUID" -ne 0 ]; then
     echo "Loi: Vui long chay voi quyen root: sudo bash uninstall.sh"
+    echo "Chay 'bash uninstall.sh -h' de xem huong dan."
     exit 1
 fi
 

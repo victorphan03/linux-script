@@ -25,6 +25,28 @@ RECORD_NAME="home.victorphan.net"
 PROXIED=false
 
 # =================================================================
+# HAM HIEN THI TRO GIUP (-h | --help)
+# =================================================================
+show_help() {
+    echo "=================================================================="
+    echo " Cloudflare Dynamic DNS Updater"
+    echo "=================================================================="
+    echo "Cach dung:"
+    echo "  bash update-dns.sh [TUY_CHON]"
+    echo ""
+    echo "Cac tuy chon:"
+    echo "  (khong co tham so)  Chay kiem tra va cap nhat IP 1 lan duy nhat"
+    echo "  loop                Chay vong lap vo tan moi 30 giay (dung cho service)"
+    echo "  -h, --help          Hien thi huong dan su dung nay"
+    echo ""
+    echo "Cac file lien quan:"
+    echo "  install.sh          Cai dat script thanh Systemd Service tu khoi dong"
+    echo "  uninstall.sh        Go bo Systemd Service khoi he thong"
+    echo "=================================================================="
+    exit 0
+}
+
+# =================================================================
 # HAM CAP NHAT DNS
 # =================================================================
 run_update() {
@@ -75,8 +97,13 @@ run_update() {
 }
 
 # =================================================================
-# LOGIC XU LY
+# LOGIC XU LY THAM SO
 # =================================================================
+
+# Kiem tra co truyen -h hoac --help khong
+if [ "$1" == "-h" ] || [ "$1" == "--help" ]; then
+    show_help
+fi
 
 # Kiem tra jq
 if ! command -v jq &> /dev/null; then
